@@ -287,3 +287,14 @@ export const FINDING_TYPE = {
 | `src/components/FindingCard.vue` | Finding card (§6.10): badge, title, explanation, units, quote blocks with source chips, advisory footer |
 | `src/components/Conclusion.vue` | Markdown conclusion with the «Скачать .md» CTA |
 | `src/components/ClausePanel.vue` | Dialog (§10) showing the full clause and its sub-items from the stored document |
+
+---
+
+## 13. Results workspace (redesign, 23.09)
+
+The results screens (`src/results/`) follow a calmer variant of the system, approved on the team's design canvas: the brand blue stays the one accent, colour appears only on the finding type, and the first screen answers "what changed" before any detail.
+
+- **Tokens** (`tokens.css`): `--navy` top bar and headlines, `--accent` / `--accent-soft` for the kept / moved segments, `--page`, `--panel`, `--panel-line`, `--chip`, `--text`, `--text-2`, `--muted`; finding colours `--c-loss`, `--c-conflict`, `--c-dup`, `--c-ok`, `--c-reorg` with `-text` variants for labels; `--sh-panel` shadow. Type: `--font-display` (Manrope 800, tracking −0.02em) for headlines, `--font-sans` (Golos Text) for UI, `--font-quote` (Lora) for verbatim document text.
+- **Patterns**: verdict block (status line, headline, lead, distribution bar with four figures); finding row (`FindingRow.vue`: number · type dot + label · title · units · clause chips «до · п. X → нет»; expands to two quote panels side by side, «после» panel dashed when no equivalent exists); unit flow (`UnitFlow.vue`, SVG, kept units connected straight, reorganized in teal, new units green, red / violet dots for a unit with a loss / conflict); navy recommendations panel with a white button; unit rail with per-unit counts.
+- **Rules kept**: every finding shows its clause reference and verbatim quote; the advisory disclaimer stays on the summary and in the conclusion; low-importance findings (moved, overlap, note) are hidden behind a count; technical data (model calls, seconds, method names) never appears in the row, only inside the expanded explanation.
+
