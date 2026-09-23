@@ -12,6 +12,7 @@ import { AnalysisResult } from "../schemas.js";
 import { AnalysisDocumentSchema, extractClauses } from "./clauses.js";
 import { compareFunctions } from "./compare.js";
 import { extractFunctions } from "./extract.js";
+import { checkRegulatorySafe, withRegulatorySection } from "./regulatory.js";
 import { writeConclusion } from "./report.js";
 import { buildStructure } from "./structure.js";
 
@@ -100,19 +101,24 @@ export async function runPipeline(id, files, deps = {}) {
     current = "compare";
     await set({ stage: current, functions: { before: persist(before), after: persist(after) } });
     const compared = await compareFunctions({ before, after, units: structure.units, docs, llm });
+    // O1 (optional, docs/TASK.md §12a): «после» functions vs legislation. Still the
+    // compare stage, so the five-stage progress is unchanged; never fails the run.
+    const regulatory = await (deps.checkRegulatory ?? checkRegulatorySafe)({ after, docs: documents, llm });
 
     // 5. conclusion.
     current = "report";
-    await set({ stage: current, matches: compared.matches, findings: compared.findings });
+    await set({ stage: current, matches: compared.matches, findings: compared.findings, regulatory: regulatory.findings });
     const stats = {
       ...clauseStats,
       ...structure.stats,
       functions_before: before.length,
       functions_after: after.length,
       ...compared.stats,
+      ...regulatory.stats,
       extract_chunks: extracted.reduce((n, r) => n + r.stats.chunks, 0),
     };
     const report = await writeConclusion({ findings: compared.findings, units: structure.units, unit_changes: structure.unit_changes, stats, llm });
+    report.conclusion_md = withRegulatorySection(report.conclusion_md, regulatory);
     const finalStats = {
       ...stats,
       ...report.stats,
@@ -128,6 +134,7 @@ export async function runPipeline(id, files, deps = {}) {
       functions: { before: persist(before), after: persist(after) },
       matches: compared.matches,
       findings: compared.findings,
+      regulatory: regulatory.findings,
       conclusion_md: report.conclusion_md,
       stats: finalStats,
     });

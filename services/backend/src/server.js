@@ -1,6 +1,6 @@
 import express from "express";
 import { connectDb, pingDb, closeDb } from "./db.js";
-import { ensureDemoUser } from "./seed.js";
+import { ensureDemoUser, ensureRegulatoryNorms } from "./seed.js";
 
 import { HttpError } from "./httpError.js";
 import { llmConfigured } from "./llm.js";
@@ -54,6 +54,7 @@ try {
   const db = await connectDb();
   console.log(`connected to MongoDB, database "${db.databaseName}"`);
   await ensureDemoUser();
+  await ensureRegulatoryNorms();
 } catch (err) {
   console.error(`startup failed: ${err.message}`);
   process.exit(1);

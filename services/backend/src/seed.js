@@ -4,6 +4,18 @@
 // disables it.
 import { hashPassword } from "./auth.js";
 import { getDb } from "./db.js";
+import { loadRegulatoryNorms } from "./regulatoryNorms.js";
+
+// O1 norms from data/regulatory (AGENTS.md §7a). Optional: a failure is logged
+// and the backend still starts; the analysis then reports regulatory "no_norms".
+export async function ensureRegulatoryNorms() {
+  try {
+    const { pieces, acts } = await loadRegulatoryNorms();
+    console.log(pieces ? `regulatory norms: ${pieces} pieces from ${acts} acts` : "regulatory norms: none shipped");
+  } catch (err) {
+    console.warn(`regulatory norms not loaded: ${err.message}`);
+  }
+}
 
 const email = (process.env.DEMO_USER_EMAIL || "").trim().toLowerCase();
 const password = process.env.DEMO_USER_PASSWORD || "";

@@ -91,6 +91,21 @@ export const ConflictResponse = z.object({
     .max(20),
 });
 
+// regulatory.md (O1, docs/TASK.md §12a)
+export const RegulatoryResponse = z.object({
+  results: z
+    .array(
+      z.object({
+        id: id,
+        norm_id: id.nullable(),
+        relation: z.enum(["basis", "contradicts", "none"]),
+        confidence: z.number().min(0).max(1).catch(0.5),
+        reason: shortText,
+      }),
+    )
+    .max(100),
+});
+
 // report.md
 export const ReportResponse = z.object({
   conclusion_md: z.string().trim().min(50).max(20_000),
@@ -117,6 +132,34 @@ export const Finding = z.object({
   citations: z.array(Citation).min(1),
 });
 
+// O1: a function of «после» next to a norm. The org citation is verified like any
+// finding; the norm quote is a verbatim line of the norm text, chosen by code.
+export const REGULATORY_TYPES = ["REGULATORY_BASIS", "POTENTIAL_REGULATORY_CONFLICT"];
+export const NormRef = z.object({
+  norm_id: z.string(),
+  origin: z.enum(["corpus", "uploaded"]),
+  doc_id: z.string(),
+  doc_title: z.string(),
+  clause: z.string(),
+  breadcrumb: z.string(),
+  redaction_date: z.string().nullable(),
+  source_url: z.string().nullable(),
+  ref: z.string().nullable(),
+  quote: z.string().min(1),
+});
+export const RegulatoryFinding = z.object({
+  finding_id: z.string(),
+  type: z.enum(REGULATORY_TYPES),
+  severity: z.enum(["high", "medium", "low", "info"]),
+  label: z.string(),
+  units: z.array(z.string()),
+  title: z.string(),
+  explanation: z.string(),
+  confidence: z.number().min(0).max(1),
+  citations: z.array(Citation).min(1),
+  norm: NormRef,
+});
+
 export const AnalysisResult = z.looseObject({
   units: z.array(
     z.looseObject({ unit_id: z.string(), side: z.enum(["before", "after"]), name: z.string(), abbr: z.string().nullable(), kind: z.enum(UNIT_KINDS), parent: z.string().nullable(), source_clause: z.string() }),
@@ -127,6 +170,7 @@ export const AnalysisResult = z.looseObject({
   functions: z.object({ before: z.array(z.looseObject({ func_id: z.string(), clause_id: z.string(), owners: z.array(z.string()), canonical: z.string(), category: z.enum(CATEGORIES), quote: z.string() })), after: z.array(z.looseObject({ func_id: z.string(), clause_id: z.string() })) }),
   matches: z.array(z.looseObject({ before_id: z.string(), after_id: z.string().nullable(), relation: z.enum(["same", "partial", "moved", "unmatched"]), confidence: z.number(), steps: z.array(z.string()) })),
   findings: z.array(Finding),
+  regulatory: z.array(RegulatoryFinding).optional(),
   conclusion_md: z.string(),
   stats: z.looseObject({}),
 });

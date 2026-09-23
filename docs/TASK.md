@@ -340,12 +340,15 @@ Cut list if late: optional O1/O3 work, LLM cache, then auth on analysis routes (
   | «Об акционерных обществах» `Z030000415_` | ст. 53-1 | Board committees, including internal audit |
   | «О Фонде национального благосостояния» `Z1200000550` | ст. 11 | «Служба внутреннего аудита Фонда» |
   | «О противодействии коррупции» `Z1500000410` | ст. 1 п. 5, ст. 15 | Definition of конфликт интересов; the duty to prevent and resolve it |
-- **How.** Candidates come from the same steps as `compare.js` §5. First Jaccard on tokens. Then `llm.embed` cosine: top 5 norms per «после» function. The fallback is also the same: if `EMBEDDING_MODEL` is not configured or the call fails, use Jaccard ≥ 0.15 alone. Norm vectors are computed once and stored on the `regulatory_norms` documents, about 5 calls for the 477 demo pieces. The LLM judge (`src/prompts/regulatory.md`) returns `{norm_id | null, relation: required_by | restricted_by | none}` with cautious wording. Code verifies both quotes (the org clause and the norm text) before a finding is kept.
+- **How (implemented, `src/pipeline/regulatory.js`, run inside the compare stage).**
+  - **Candidates.** ≤ 3 norms per «после» function. With `EMBEDDING_MODEL` set they are ranked by `llm.embed` cosine ≥ 0.35; norm vectors are computed once and cached on the `regulatory_norms` rows, keyed by model and text hash. Otherwise the ranking is token Jaccard ≥ 0.05, the same fallback idea as §5. The team key has no embedding access, so today it is Jaccard. Uploaded `regulations` get +0.05, so they win ties.
+  - **Judge.** One call per 20 functions (`src/prompts/regulatory.md`), with norms sent once per batch under short ids. It returns `{norm_id | null, relation: basis | contradicts | none, confidence, reason}` with cautious wording. An unknown norm id or confidence < 0.6 is rejected.
+  - **Quote and verify.** Code quotes the norm line closest to the function (`normQuote`), then verifies both quotes (the org clause and the norm text) before a finding is kept.
 - **Findings** (advisory names, as in §5):
   - `REGULATORY_BASIS` (info): a function is grounded in a norm.
-  - `POTENTIAL_REGULATORY_GAP` (medium): a norm requires something that no «после» clause covers. It cites the norm and names the range that was searched.
-  - `POTENTIAL_REGULATORY_CONFLICT` (high): a clause contradicts a norm, for example internal audit not reporting to the board.
-- **Citation shape.** Each finding keeps its org citation. The norm is added as `norm: {doc_id, clause: "Статья 61, п. 3", breadcrumb, redaction_date, source_url}`. A norm is the «нормативное основание», never proof by itself and never a legal conclusion (ТЗ §9).
+  - `POTENTIAL_REGULATORY_CONFLICT` (high): a clause may contradict a norm, for example internal audit not reporting to the board.
+  - Not implemented: the reverse check (a norm requires something that no «после» clause covers). The README lists it under «Ограничения».
+- **Citation shape.** Each finding keeps its org citation. The norm is added as `norm: {norm_id, origin: corpus | uploaded, doc_id, doc_title, clause: "Статья 61", breadcrumb, redaction_date, source_url, ref, quote}`, and the finding carries `confidence`. The conclusion gets a code-built «Сверка с законодательством» section above the disclaimer. A norm is the «нормативное основание», never proof by itself and never a legal conclusion (ТЗ §9).
 
 **UI.** One more tab, «Нормативные требования», with the existing `scale` icon from `Icon.vue`. A norm card follows the design system (AGENTS.md §6a). It shows the breadcrumb, the quote, `ред. от …`, and the «Открыть на adilet.zan.kz» button (AGENTS.md §7a, rule 5). The button is styled `.btn .btn-ghost .btn-sm` (an inline action, not the one CTA) and uses a new `external-link` icon in `Icon.vue`.
 
@@ -361,7 +364,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 | K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (parser tests cover Word level/start overrides; sub-items carry `marker`, `clause: null`); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected; pipeline stage 1 `clauses.js` (glued ids, sub-items, page numbers, TOC tail; 450/453 clauses on the demo pair; 5 node tests) | `llm.js`, modules 2–5 with verify, analyses persisted |
 | K3 | 25 | ⚠️ | Russian README with run steps, tested auth commands and extractor response format; bundled control PDFs with provenance and reproducible extraction check; extraction/auth smoke checks; clean-test.sh; `node --test` for clauses on a real extractor fixture; smoke.sh runs the demo analysis (20 checks) | Smoke asserts on §9 findings once stages 2–5 exist; backend tests for compare without a key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |
-| K5 | 10 | ⚠️ | O1 data only: 3 acts in `services/backend/data/regulatory/` (477 pieces, validated, disclosed in the README); not copied into the image, loaded or used yet | `COPY data ./data`, `ensureRegulatoryNorms()`, `regulatory.js`, «Нормативные требования» tab; O3 in the report; after K1–K4. O2 not built (§12) |
+| K5 | 10 | ⚠️ | O1 backend: 3 acts (477 pieces) loaded at startup into `regulatory_norms` (verified in Docker: 477 after two restarts, unique index); `regulatory.js` + 7 tests green; `analysis.regulatory` and a conclusion section. UI tab and an end-to-end run with a model not yet verified | «Нормативные требования» tab with the adilet button; a demo run with a model; O3 in the report. O2 not built (§12) |
 
 ---
 
