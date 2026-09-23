@@ -90,11 +90,6 @@ async function submit() {
           {{ mode === "signup" ? "Создайте учётную запись, чтобы запускать анализ." : "Войдите, чтобы продолжить работу с анализом." }}
         </p>
 
-        <div class="segmented" role="tablist">
-          <button type="button" role="tab" :aria-selected="mode === 'login'" :class="{ active: mode === 'login' }" @click="switchMode('login')">Вход</button>
-          <button type="button" role="tab" :aria-selected="mode === 'signup'" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">Регистрация</button>
-        </div>
-
         <form class="auth-form" @submit.prevent="submit">
           <label v-if="mode === 'signup'" class="field">
             <span class="label">Имя</span>
@@ -146,10 +141,6 @@ async function submit() {
           </button>
         </form>
 
-        <p class="switch-hint small muted">
-          <template v-if="mode === 'login'">Нет учётной записи? <a href="#" @click.prevent="switchMode('signup')">Зарегистрироваться</a></template>
-          <template v-else>Уже есть учётная запись? <a href="#" @click.prevent="switchMode('login')">Войти</a></template>
-        </p>
       </div>
     </section>
   </div>
@@ -207,14 +198,6 @@ async function submit() {
 .auth-card .muted { color: var(--muted); }
 .subtitle { margin: var(--sp-1) 0 var(--sp-6); }
 
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--chip); border: 1px solid var(--panel-line); border-radius: 8px; margin-bottom: var(--sp-6); }
-.segmented button {
-  height: 36px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: 14px; font-weight: 700;
-  color: var(--muted); cursor: pointer; transition: background var(--t-fast), color var(--t-fast);
-}
-.segmented button:hover { color: var(--accent); }
-.segmented button.active { background: var(--white); color: var(--accent); box-shadow: 0 1px 2px rgba(31, 30, 29, 0.08); }
-
 .auth-form { display: grid; gap: var(--sp-4); }
 .auth-form .label {
   font-size: 11px; line-height: 16px; font-weight: 700;
@@ -238,8 +221,6 @@ async function submit() {
 .auth-form .btn-cta { margin-top: var(--sp-2); background: var(--accent); color: #fff; box-shadow: none; border-radius: 8px; font-weight: 700; }
 .auth-form .btn-cta:hover { background: #0C4B49; }
 .auth-page :focus-visible { box-shadow: 0 0 0 3px rgba(15, 92, 90, 0.3); }
-.switch-hint { text-align: center; margin-top: var(--sp-5); }
-.switch-hint a { font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 960px) {
   .auth-page { grid-template-columns: 1fr; padding: var(--sp-6) var(--sp-4) var(--sp-10); gap: var(--sp-4); }
