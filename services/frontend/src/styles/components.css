@@ -402,3 +402,11 @@ a:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Informational finding (moved function, note): blue accent, added for the results screen. */
+.finding.f-info { border-left-color: var(--kt-blue-600); }
+.finding-group { border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--surface); }
+.finding-group > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); font-weight: 800; color: var(--ink-800); }
+.finding-group > summary::-webkit-details-marker { display: none; }
+.finding-group[open] > summary { border-bottom: 1px dashed var(--line-strong); }
+.finding-group .group-body { display: grid; gap: var(--sp-4); padding: var(--sp-4) var(--sp-5) var(--sp-5); }

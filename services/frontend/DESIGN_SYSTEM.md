@@ -207,6 +207,8 @@ It appears at the top of Results, Finding detail and Conclusion, and in the expo
 ### 6.10 Finding card
 It has a 4 px left border in the finding's colour, the finding badge, a title (the function name), a one-sentence explanation, the "до" vs "после" units, a confidence meter, source chips, and a "Подробнее" ghost button. Sort order: loss, then conflict, then duplication, then by confidence.
 
+`.finding.f-info` is the fourth, informational variant (blue left border) for «Функция перераспределена» and «Примечание» cards. Low-importance cards (moved functions, overlaps of a general and a specific norm, notes) sit in a collapsed `<details class="finding-group">` under the main list, so the screen leads with losses, conflicts and duplications.
+
 ### 6.11 KPI tiles
 A white card with an icon tile, a 36 px number and a 13 px label, plus an optional delta ("+2 к исходной структуре"). There are four in a row on Results: Подразделений до/после · Потери · Дублирования · Конфликты.
 
@@ -277,4 +279,11 @@ export const FINDING_TYPE = {
 | Component | Patterns used |
 |---|---|
 | `src/AuthPanel.vue` | Split auth screen: hero band with glass icon tiles (§5.1), white card with a segmented login/signup switch, inputs with leading icons and a show/hide password button, error alert (§6.12), orange CTA (§6.1) |
-| `src/App.vue` | App shell with sticky white header (§4), API status pill, user avatar, empty state (§6.12) |
+| `src/App.vue` | App shell with sticky white header (§4), API status pill, user avatar, page stepper (§6.7), advisory banner (§6.8), KPI tiles (§6.11), info bar (§5.6), results tabs |
+| `src/components/UploadPanel.vue` | Two dropzones «До» / «После» with file-type chips (§6.6), file list, the one orange CTA «Анализировать» (§6.1) and an outline button for the control set |
+| `src/components/ProgressBar.vue` | Linear progress and the five pipeline steps as done / running / pending tiles (§6.7) |
+| `src/components/UnitsTable.vue` | Table (§6.5) with unit status badges (§2.3) and source chips (§6.9) |
+| `src/components/MatchTable.vue` | Table with filter chips (§5.5), relation badges and source chips |
+| `src/components/FindingCard.vue` | Finding card (§6.10): badge, title, explanation, units, quote blocks with source chips, advisory footer |
+| `src/components/Conclusion.vue` | Markdown conclusion with the «Скачать .md» CTA |
+| `src/components/ClausePanel.vue` | Dialog (§10) showing the full clause and its sub-items from the stored document |
