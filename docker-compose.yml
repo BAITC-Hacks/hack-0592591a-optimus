@@ -70,6 +70,24 @@ services:
         - action: rebuild
           path: ./services/backend
 
+  # Internal document extraction (Word/PDF/Excel -> traceable fragments).
+  # Python, because python-docx/pdfplumber/openpyxl are the most capable parsers.
+  # Not routed by Caddy: only the backend calls it.
+  extractor:
+    build: ./services/extractor
+    restart: unless-stopped
+    environment:
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    develop:
+      watch:
+        - action: rebuild
+          path: ./services/extractor
+
   # Vue 3 + Vite, built to static files and served by a small Caddy container.
   frontend:
     build: ./services/frontend

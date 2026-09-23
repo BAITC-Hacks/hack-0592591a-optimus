@@ -98,7 +98,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 | ID | Pts | Status | Evidence in repo | Next gap |
 |---|---|---|---|---|
 | K1 | 25 | ❌ | Vue start page and Express health endpoint; no document analysis | Main scenario end-to-end on the control set |
-| K2 | 25 | ⚠️ | Compose, Vue, Express, Mongo 8, healthchecks; proxy routing shipped in its image | LLM module, document processing, agent pipeline with source verification |
+| K2 | 25 | ⚠️ | Compose, Vue, Express, Mongo 8, healthchecks; proxy routing shipped in its image; internal `extractor` service parses docx/pdf/xlsx/xls into located fragments (19 tests) | Backend endpoint to extractor, LLM module, agent pipeline with source verification |
 | K3 | 25 | ⚠️ | Russian README with run steps, smoke.sh, clean-test.sh; proxy configuration rebuilt on deploy | Demo set, full jury scenario with expected output, core domain tests |
 | K4 | 15 | ❌ | — | Traceable findings, readable conclusion, advisory disclaimer |
 | K5 | 10 | ❌ | — | One optional item (O3 first) after K1–K4 |

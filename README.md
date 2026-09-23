@@ -8,8 +8,9 @@
 
 ## Что реализовано
 
-- Единый [docker-compose.yml](docker-compose.yml) с сервисами Caddy, backend, frontend и MongoDB, проверками состояния и постоянными томами.
+- Единый [docker-compose.yml](docker-compose.yml) с сервисами Caddy, backend, extractor, frontend и MongoDB, проверками состояния и постоянными томами.
 - **Backend** ([services/backend](services/backend)): Node.js + Express. Маршрут `GET /api/health` возвращает `{"status":"ok"}`; неизвестные маршруты `/api/*` возвращают JSON-ошибку `404` в формате `{"error":{"code","message"}}`.
+- **Extractor** ([services/extractor](services/extractor)): внутренний сервис на Python + FastAPI. `POST /extract` принимает файл Word (`.docx`), PDF с текстовым слоем или Excel (`.xlsx`, `.xlsm`, `.xls`) и возвращает упорядоченный список фрагментов. У каждого фрагмента есть текст, номер пункта, раздел, точное место в файле и готовая ссылка на источник: для Word — абзац или строка таблицы с восстановленной автонумерацией Word, для PDF — страница и строки, для Excel — лист, строка и диапазон ячеек. Формат определяется по содержимому файла, а не по расширению. Наружу сервис не опубликован, Caddy его не проксирует.
 - **Frontend** ([services/frontend](services/frontend)): Vue 3 + Vite, собирается в статические файлы и раздаётся контейнером Caddy. Стартовая страница показывает статус API.
 - Настройки адреса сайта и опубликованных портов через переменные окружения.
 - [scripts/smoke.sh](scripts/smoke.sh): три HTTP-проверки — `/api/health`, главная страница, ошибка для неизвестного маршрута API.
@@ -22,7 +23,7 @@
 Доступный сейчас сценарий:
 
 1. Проверяющий копирует `.env.example` в `.env` и запускает Docker Compose.
-2. Compose собирает образы backend и frontend, запускает MongoDB, backend, frontend и Caddy и ждёт, пока все четыре контейнера станут healthy.
+2. Compose собирает образы backend, extractor и frontend, запускает MongoDB, extractor, backend, frontend и Caddy и ждёт, пока все пять контейнеров станут healthy.
 3. Пользователь открывает `http://localhost:3000/`. Caddy проксирует запрос во frontend; страница «Анализ организационной структуры» запрашивает `/api/health` и показывает статус API.
 4. Запрос `http://localhost:3000/api/health` проксируется в backend и возвращает `{"status":"ok"}`.
 5. Проверяющий запускает smoke-скрипт и получает результаты трёх HTTP-проверок.
@@ -34,6 +35,8 @@
 - **Docker Compose** — описывает единое окружение для локального запуска и VM.
 - **Caddy**, образ `caddy:2-alpine` — единая точка входа: `/api/*` → backend, остальное → frontend; конфигурация находится в [Caddyfile](Caddyfile). Тот же образ раздаёт статику frontend.
 - **Node.js 22** (`node:22-alpine`) и **Express 5** — backend API. Выбран потому, что команда знает JavaScript, а один язык на backend и frontend ускоряет работу за 5 часов.
+- **Python 3.12** (`python:3.12-slim`), **FastAPI**, **uvicorn** — сервис извлечения текста. Python выбран из-за зрелых библиотек разбора документов. Зависимости зафиксированы в `services/extractor/uv.lock` и ставятся через **uv**.
+- **python-docx** (Word), **pdfplumber** на базе pdfminer.six (PDF), **openpyxl** (`.xlsx`/`.xlsm`), **xlrd** (`.xls`), **python-multipart** (загрузка файлов). В образ extractor также входят **pytest** и **httpx** для тестов.
 - **Vue 3** и **Vite 6** — frontend, собирается в статические файлы на этапе сборки образа. Выбран по знакомству команды.
 - **MongoDB**, образ `mongo:8.0` — отдельный сервис базы данных с постоянным томом. Прикладной код его пока не использует.
 - **Bash** — язык проверочных скриптов; они также используют стандартные системные утилиты, включая `grep`, `sed` и `mktemp`.
@@ -49,6 +52,7 @@ flowchart LR
     user[Браузер / smoke-скрипт] -->|HTTP :3000| caddy[Caddy]
     caddy -->|/api/*| backend[Backend: Node.js + Express]
     caddy -->|/*| frontend[Frontend: Vue 3, статика]
+    backend -.->|внутренняя сеть| extractor[Extractor: Python + FastAPI]
     backend -.->|пока не используется| mongo[(MongoDB)]
     mongo --> volume[(Том mongo-data)]
 ```
@@ -60,6 +64,8 @@ flowchart LR
 **Backend** — контейнер из [services/backend/Dockerfile](services/backend/Dockerfile), порт `8000` внутри сети Compose. Зависимости зафиксированы в `package-lock.json`. Healthcheck запрашивает `/health`.
 
 **Frontend** — двухэтапный образ из [services/frontend/Dockerfile](services/frontend/Dockerfile): `node:22-alpine` собирает Vite-проект, `caddy:2-alpine` раздаёт `dist/` на порту `80`.
+
+**Extractor** — контейнер из [services/extractor/Dockerfile](services/extractor/Dockerfile), порт `8001` только внутри сети Compose. Разбирает Word, PDF и Excel в фрагменты со ссылками на источник. Healthcheck запрашивает `/health`.
 
 **MongoDB** — независимый контейнер в сети Compose. Порт базы не опубликован на хосте; данные хранятся в `mongo-data`. Его healthcheck выполняет команду `ping`. Backend получает `MONGO_URL`, но пока не обращается к базе.
 
@@ -82,6 +88,7 @@ docker compose up --build -d --wait
 - `WEB_PORT=3000` — порт HTTP на хосте.
 - `HTTPS_PORT=3443` — порт HTTPS на хосте; при `SITE_ADDRESS=:80` HTTPS не настроен.
 - `MONGO_URL=mongodb://mongo:27017/hackalem` — заготовка строки подключения для будущего приложения, сейчас не используется.
+- `MAX_UPLOAD_MB=20` — максимальный размер загружаемого документа в мегабайтах для сервиса извлечения текста.
 - `LLM_PROVIDER=openai` — заготовка выбора провайдера, сейчас не используется.
 - `LLM_MODEL` — пустая заготовка имени модели, сейчас не используется.
 - `LLM_BASE_URL` — пустая заготовка адреса AI API, сейчас не используется.
@@ -119,6 +126,14 @@ docker compose down
 WEB_PORT=3100 ./scripts/smoke.sh
 ```
 
+Тесты сервиса извлечения (тестовые Word, Excel и PDF создаются в коде теста, ключи не нужны):
+
+```bash
+docker compose run --rm --no-deps extractor pytest -q
+```
+
+Они проверяют: восстановление автонумерации Word и раздела по заголовкам, строки таблиц Word, строки и диапазоны ячеек Excel, склейку перенесённых строк PDF и ссылки «п. N, стр. N, строки N–N», предупреждение для PDF без текстового слоя, определение формата по содержимому, а также отказ на `.txt`, `.doc`, пустой, повреждённый файл и zip-бомбу.
+
 Проверка запуска из чистого локального клона:
 
 ```bash
@@ -141,6 +156,7 @@ WEB_PORT=3100 ./scripts/smoke.sh
 - Есть стартовый Vue-интерфейс и Express API проверки состояния. Загрузка документов, основной продуктовый сценарий и AI-обработка отсутствуют.
 - Нет моделей данных, валидации пользовательского ввода, загрузки файлов и обработки ошибок внешних API.
 - Smoke-проверка охватывает три HTTP-запроса. Успешный результат не подтверждает работу будущего продукта или сохранение данных в MongoDB.
+- Извлечение текста: сканированные PDF без текстового слоя не распознаются (OCR нет, возвращается предупреждение); формат `.doc` не поддерживается — нужно пересохранить в `.docx`. Автонумерация Word восстанавливается упрощённо: учитываются формат и шаблон уровня списка, но не переопределения начала нумерации (`lvlOverride`). Кириллические PDF в автотестах не проверялись.
 - Теги контейнерных образов не закреплены по digest; `caddy:2-alpine` также не фиксирует minor-версию.
 
 ## Развёрнутая версия
@@ -155,7 +171,7 @@ WEB_PORT=3100 ./scripts/smoke.sh
 
 ## Надёжность и безопасность
 
-Все четыре сервиса имеют healthcheck и политику перезапуска `unless-stopped`. Наружу публикуются только порты Caddy. MongoDB не имеет опубликованного порта; аутентификация базы в текущем Compose не настроена. Backend принимает JSON не больше 1 МБ, скрывает заголовок `X-Powered-By` и отвечает на ошибки JSON-объектом без трассировки стека. Проверка `/api/health` не проверяет MongoDB.
+Все пять сервисов имеют healthcheck и политику перезапуска `unless-stopped`. Наружу публикуются только порты Caddy. MongoDB не имеет опубликованного порта; аутентификация базы в текущем Compose не настроена. Backend принимает JSON не больше 1 МБ, скрывает заголовок `X-Powered-By` и отвечает на ошибки JSON-объектом без трассировки стека. Проверка `/api/health` не проверяет MongoDB.
 
 Файлы `.env`, `.env.*` (кроме `.env.example`), `*.pem` и `*.key` исключены через `.gitignore`. Маршрутов обработки документов пока нет.
 
@@ -163,7 +179,8 @@ WEB_PORT=3100 ./scripts/smoke.sh
 
 - Подготовленный до мероприятия шаблон окружения обозначен в истории Git коммитом `a6d411c` (`chore: development environment template (prepared before the event)`). В него входят инструкции агентов, Compose, Caddyfile, шаблоны документации и скрипты проверки.
 - Сторонние компоненты текущего окружения: Docker/Compose, Caddy, MongoDB, curl и их контейнерные образы. Файлы лицензий этих компонентов в репозиторий не включены; условия поставки определяются соответствующими компонентами и образами.
-- Внешние модели, датасеты и прикладные библиотеки не добавлены.
+- Библиотеки сервиса extractor: FastAPI, uvicorn, python-multipart (BSD/MIT), python-docx (MIT), pdfplumber и pdfminer.six (MIT), openpyxl (MIT), xlrd (BSD), pytest (MIT), httpx (BSD). Полный список транзитивных зависимостей — в `services/extractor/uv.lock`.
+- Внешние модели и датасеты не добавлены.
 - В репозитории есть инструкции для OpenAI Codex и Claude Code. Эта редакция документации подготовлена с помощью OpenAI Codex.
 
 ## Команда
