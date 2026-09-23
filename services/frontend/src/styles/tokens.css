@@ -1,0 +1,77 @@
+/* Design tokens. See ../../DESIGN_SYSTEM.md */
+:root {
+  /* Brand */
+  --kt-blue-900: #062E6F;
+  --kt-blue-800: #0842A0;
+  --kt-blue-700: #0052CC;
+  --kt-blue-600: #0A6FE0;
+  --kt-blue-500: #1E88FF;
+  --kt-blue-100: #E3EEFD;
+  --kt-blue-50:  #F2F7FE;
+  --kt-orange-600: #F07800;
+  --kt-orange-500: #FF8A00;
+  --kt-orange-400: #FFA126;
+
+  --grad-hero: linear-gradient(135deg, #0842A0 0%, #0A6FE0 55%, #1E88FF 100%);
+  --grad-cta:  linear-gradient(180deg, #FFA126 0%, #FF8A00 100%);
+  --grad-tile: linear-gradient(145deg, #1E88FF 0%, #0A6FE0 100%);
+  --ornament: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.16' stroke-width='1.5'%3E%3Cpath d='M24 4 44 24 24 44 4 24Z'/%3E%3Cpath d='M24 14 34 24 24 34 14 24Z'/%3E%3C/g%3E%3Cpath d='M0 0 8 8 0 16ZM48 0 40 8 48 16ZM0 48 8 40 0 32ZM48 48 40 40 48 32Z' fill='%23ffffff' fill-opacity='.08'/%3E%3C/svg%3E");
+  --grad-band: var(--ornament) center / 48px 48px repeat, linear-gradient(90deg, #0A6FE0 0%, #1E88FF 100%);
+
+  /* Neutrals */
+  --ink-900: #101A2E;
+  --ink-800: #1D2940;
+  --ink-600: #4A5872;
+  --ink-500: #6B7A93;
+  --ink-300: #B6C1D3;
+  --line: #E3EAF4;
+  --line-strong: #CBD6E6;
+  --surface: #FFFFFF;
+  --surface-muted: #F7F9FC;
+  --bg: #F2F7FE;
+
+  /* Unit status */
+  --st-created: #0E9F6E;     --st-created-bg: #E4F7EF;
+  --st-kept: #4A5872;        --st-kept-bg: #EEF2F7;
+  --st-reorg: #0891B2;       --st-reorg-bg: #E0F4F9;
+  --st-abolished: #8A94A6;   --st-abolished-bg: #F1F3F6;
+
+  /* Finding type */
+  --fx-loss: #D92D20;        --fx-loss-bg: #FDECEA;
+  --fx-dup: #C27400;         --fx-dup-bg: #FFF4E0;
+  --fx-conflict: #7A3EE0;    --fx-conflict-bg: #F1EAFD;
+  --fx-ok: #0E9F6E;          --fx-ok-bg: #E4F7EF;
+
+  --mark: #FFF1C2;
+
+  /* Type */
+  --font-sans: "Nunito Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-quote: "PT Serif", Georgia, "Times New Roman", serif;
+  --fs-display: 40px; --lh-display: 48px;
+  --fs-h1: 30px;      --lh-h1: 38px;
+  --fs-h2: 22px;      --lh-h2: 30px;
+  --fs-h3: 18px;      --lh-h3: 26px;
+  --fs-body: 15px;    --lh-body: 24px;
+  --fs-sm: 13px;      --lh-sm: 20px;
+  --fs-xs: 12px;      --lh-xs: 16px;
+  --fs-kpi: 36px;
+
+  /* Spacing */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;
+  --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px;
+
+  /* Shape */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-pill: 999px;
+  --sh-1: 0 1px 2px rgba(10,50,120,.06), 0 1px 1px rgba(10,50,120,.04);
+  --sh-2: 0 6px 20px rgba(10,60,140,.08);
+  --sh-3: 0 16px 40px rgba(10,60,140,.14);
+  --sh-cta: 0 8px 18px rgba(255,138,0,.35);
+  --focus: 0 0 0 3px rgba(30,136,255,.35);
+
+  /* Motion */
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --t-fast: 120ms; --t-mid: 200ms; --t-slow: 300ms;
+
+  --container: 1200px;
+  --header-h: 64px;
+}
