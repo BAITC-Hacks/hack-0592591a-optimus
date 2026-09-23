@@ -122,14 +122,16 @@ Acceptance: a judge timeout, omitted verdict, repeated id or unknown candidate m
 Matching, per function «до» (`compare.js`):
 
 ```
-1 exact     normalized text or canonical equal                          → same      (confidence 1.0)
-2 lexical   token Jaccard ≥ 0.6 on canonical + text                     → same      (0.8)
+1 exact     full normalized source text equal                           → same      (confidence 1.0)
+2 lexical   token Jaccard on canonical + text                            → candidates only
 3 semantic  cosine over embeddings: top 3 «после» functions              → candidates (no decision yet)
 4 judge     one LLM call per batch of 20 «до» functions with their
             candidates; per candidate: same | partial | none             → same / partial (LLM confidence)
-5 nothing accepted in 1–4                                                → unmatched
+5 no candidates, or a confident explicit none verdict                     → unmatched
    owner of an accepted pair differs                                     → moved
 ```
+
+Acceptance: negation, changed scope and incomplete compound duties must reach the judge even when canonical labels match. Partial matches (including weak positive assessments) retain both citations and produce an advisory partial-loss finding. A low-confidence `none` stops the analysis as incomplete instead of asserting absence.
 
 Embeddings: `llm.embed(texts)` on the same OpenAI-compatible endpoint, model `EMBEDDING_MODEL`, ~300 texts in 3–4 calls, vectors kept in memory for the run and stored on the function objects. No vector DB, no index: 150 × 150 cosines is a loop. If the model is not configured or the call fails, step 3 uses Jaccard ≥ 0.15 candidates instead and `stats.embeddings` reads `"unavailable"`; nothing else changes.
 

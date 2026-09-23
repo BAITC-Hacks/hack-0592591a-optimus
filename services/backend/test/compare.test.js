@@ -35,7 +35,7 @@ const UNITS = [
   { unit_id: "u_after_3", side: "after", name: "Департамент контроля качества аудита и методологии", abbr: "ДККМ", kind: "department", parent: "БВА" },
 ];
 
-function stubLlm({ judge = [], conflict = [], vectors = null } = {}) {
+function stubLlm({ judge = [], conflict = [], duplicates = [], vectors = null } = {}) {
   const stats = { calls: 0, retries: 0, model: "stub", embeddings: vectors ? "ok" : "unavailable" };
   return {
     stats,
@@ -43,6 +43,7 @@ function stubLlm({ judge = [], conflict = [], vectors = null } = {}) {
     async completeJson({ name, schema }) {
       stats.calls++;
       if (name.startsWith("judge")) return schema.parse({ results: judge });
+      if (name.startsWith("dupjudge")) return schema.parse({ results: duplicates });
       if (name.startsWith("conflict")) return schema.parse({ reviews: conflict });
       if (name.startsWith("report")) return schema.parse({ conclusion_md: "## Итоги\n\nСм. [до · п. 5.6.2] и [после · п. 9.9] и [до · п. 1.1].\n\nЕщё текст для минимальной длины ответа модели." });
       throw new Error(`unexpected llm call ${name}`);
@@ -62,16 +63,16 @@ test("helpers: normalize, tokens, jaccard, quoteOf", () => {
   assert.ok(quoteOf(long).length <= 300 && long.startsWith(quoteOf(long)));
 });
 
-test("step 1 exact and step 2 Jaccard match without any LLM call", async () => {
+test("only exact source text bypasses the judge; lexical similarity selects candidates", async () => {
   const before = [fn("before", "5.4.2", "готовит предложения для включения в план работ БВА;", ["ДНМ"], "plan"), fn("before", "5.4.7", "выносит предложения по повышению профессионального уровня работников ДНМ Главному аудитору;", ["ДНМ"], "other")];
   const after = [fn("after", "5.4.2", "готовит предложения для включения в план работ БВА;", ["ДНМ"], "plan"), fn("after", "5.4.6", "выносят предложения по повышению профессионального уровня работников ДНМ Главному аудитору.", ["ДНМ"], "other")];
-  const llm = stubLlm();
+  const llm = stubLlm({ judge: [{ id: before[1].func_id, candidate_id: after[1].func_id, relation: "same", confidence: 0.9 }] });
   const { matches } = await matchFunctions({ before, after, llm });
   assert.deepEqual(matches[0].steps, ["exact"]);
   assert.equal(matches[0].relation, "same");
   assert.equal(matches[1].after_id, after[1].func_id);
-  assert.deepEqual(matches[1].steps, ["exact", "jaccard"]);
-  assert.equal(llm.stats.calls, 0);
+  assert.equal(matches[1].steps.at(-1), "judge");
+  assert.equal(llm.stats.calls, 1);
 });
 
 test("step 3 embeddings pick the candidate, step 4 judge accepts it; owner change makes it moved", async () => {
@@ -90,13 +91,30 @@ test("step 3 embeddings pick the candidate, step 4 judge accepts it; owner chang
   assert.equal(matches[0].basis, "same");
 });
 
-test("a weak «partial» judge answer is not accepted", async () => {
+test("a weak partial assessment retains both sources instead of claiming full absence", async () => {
   const before = [fn("before", "5.7.2", "доводить до сведения Руководителей Общества результаты по запросу оказания консультационных услуг;", ["ДНМ"], "interact", "доводить результаты консультаций")];
   const after = [fn("after", "2.4.7", "консультировать по запросу и информировать о результатах мониторинга СВК;", ["БВА"], "interact", "консультировать руководителей")];
   const llm = stubLlm({ judge: [{ id: before[0].func_id, candidate_id: after[0].func_id, relation: "partial", confidence: 0.55 }] });
   const { matches } = await matchFunctions({ before, after, llm });
-  assert.equal(matches[0].relation, "unmatched");
+  assert.equal(matches[0].basis, "partial");
+  assert.equal(matches[0].after_id, after[0].func_id);
   assert.equal(llm.stats.calls, 1);
+});
+
+test("negation and narrowed scope are judged even when canonical labels are identical", async () => {
+  for (const [afterText, relation] of [
+    ["Отдел не проводит проверку исполнения договорных обязательств", "none"],
+    ["Отдел проводит проверку исполнения только новых договорных обязательств", "partial"],
+  ]) {
+    const before = [fn("before", "1.1", "Отдел проводит проверку исполнения договорных обязательств", ["Отдел"], "other", "проводить проверку")];
+    const after = [fn("after", "1.1", afterText, ["Отдел"], "other", "проводить проверку")];
+    const llm = stubLlm({ judge: [{ id: before[0].func_id, candidate_id: relation === "none" ? null : after[0].func_id, relation, confidence: 0.9 }] });
+    const result = await compareFunctions({ before, after, units: [], docs: docsOf(before, after), llm });
+    assert.equal(llm.stats.calls, 1);
+    assert.equal(result.matches[0].steps.at(-1), "judge");
+    assert.equal(result.findings[0].type, "POTENTIAL_LOSS");
+    assert.equal(result.findings[0].citations.length, relation === "partial" ? 2 : 1);
+  }
 });
 
 test("a confident «partial» judge answer becomes a medium partial-loss finding citing both clauses", async () => {
@@ -148,6 +166,19 @@ test("failed duplicate review cannot produce an apparently clean comparison", as
   ];
   await assert.rejects(compareFunctions({ before: [], after, units: [], docs: docsOf([], after), llm: stubLlm() }),
     (error) => error.code === "comparison_incomplete");
+});
+
+test("a shared part of compound duties is a sourced partial duplication, not full equivalence", async () => {
+  const after = [
+    fn("after", "5.4.3", "запрашивает у Руководителей Общества информацию, необходимую для осуществления функций БВА, контролирует своевременность и полноту предоставления;", ["ДНМ"], "interact", "Запрашивать информацию и контролировать полноту ее предоставления"),
+    fn("after", "5.5.8", "запрашивает у Руководителей Общества информацию, которая необходима для осуществления функций контроля качества внутреннего аудита;", ["ДККМ"], "interact", "Запрашивать информацию для контроля качества внутреннего аудита"),
+  ];
+  const llm = stubLlm({ duplicates: [{ pair_id: 1, relation: "overlap", confidence: 0.9 }] });
+  const result = await compareFunctions({ before: [], after, units: UNITS, docs: docsOf([], after), llm });
+  assert.equal(llm.stats.calls, 1);
+  assert.equal(result.findings[0].type, "POTENTIAL_DUPLICATION");
+  assert.match(result.findings[0].explanation, /Частично пересекающиеся/);
+  assert.deepEqual(result.findings[0].citations.map(c => c.quote), after.map(f => f.text));
 });
 
 test("generic vs specific owners → OVERLAP, disjoint peers → POTENTIAL_DUPLICATION, never both for one pair", async () => {

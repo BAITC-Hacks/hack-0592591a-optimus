@@ -7,12 +7,11 @@ import { HttpError } from "../httpError.js";
 import { ConflictResponse, DupJudgeResponse, JudgeResponse } from "../schemas.js";
 import { cosine, disjoint, isAncestor, isSubset, jaccard, mapLimit, normalize, quoteOf, sameSet, tokens } from "./util.js";
 
-export const JACCARD_SAME = 0.6;
 export const JACCARD_CANDIDATE = 0.15;
 export const JACCARD_DUP = 0.7;
 export const COSINE_DUP = 0.9;
 const TOP_K = 3;
-// The judge's answer is accepted only with enough confidence; weak «partial» answers count as not found.
+// Weak positive assessments stay partial/reviewable; they are not evidence of absence.
 export const JUDGE_MIN = { same: 0.6, partial: 0.7 };
 // «После» pairs with lexical similarity in this band are shown to the LLM before they can be a duplicate.
 export const JACCARD_DUP_REVIEW = 0.4;
@@ -53,34 +52,20 @@ export async function matchFunctions({ before, after, llm }) {
   const stats = { exact: 0, jaccard: 0, judge_same: 0, judge_partial: 0, unmatched: 0, judge_batches: 0, embeddings: "unavailable" };
   const afterTokens = after.map((fn) => tokens(matchText(fn)));
   const afterNorm = after.map((fn) => normalize(textOf(fn)));
-  const afterCanon = after.map((fn) => normalize(fn.canonical));
   const matches = new Array(before.length);
   const pending = [];
 
   before.forEach((fn, i) => {
     const norm = normalize(textOf(fn));
-    const canon = normalize(fn.canonical);
-    const exactAt = after.findIndex((_, j) => afterNorm[j] === norm || (canon && afterCanon[j] === canon));
+    // Canonical summaries and token sets can erase negation, scope and deadlines.
+    // Only full normalized source text can bypass the semantic judge.
+    const exactAt = after.findIndex((_, j) => afterNorm[j] === norm);
     if (exactAt >= 0) {
       matches[i] = { before_id: fn.func_id, after_id: after[exactAt].func_id, relation: "same", confidence: 1, steps: ["exact"], score: 1 };
       stats.exact++;
       return;
     }
     const mine = tokens(matchText(fn));
-    let best = -1;
-    let bestScore = 0;
-    afterTokens.forEach((theirs, j) => {
-      const score = jaccard(mine, theirs);
-      if (score > bestScore) {
-        bestScore = score;
-        best = j;
-      }
-    });
-    if (bestScore >= JACCARD_SAME) {
-      matches[i] = { before_id: fn.func_id, after_id: after[best].func_id, relation: "same", confidence: 0.8, steps: ["exact", "jaccard"], score: bestScore };
-      stats.jaccard++;
-      return;
-    }
     pending.push({ index: i, mine });
   });
 
@@ -152,12 +137,14 @@ export async function matchFunctions({ before, after, llm }) {
       if (!verdict || (verdict.relation !== "none" && !allowed.has(verdict.candidate_id))) {
         throw new HttpError(502, "comparison_incomplete", "Модель не оценила все функции. Повторите анализ.");
       }
-      const accepted = verdict && verdict.relation !== "none" && verdict.candidate_id && allowed.has(verdict.candidate_id) && verdict.confidence >= JUDGE_MIN[verdict.relation];
+      const accepted = verdict.relation !== "none" && allowed.has(verdict.candidate_id);
       if (accepted) {
         const chosen = item.candidates.find((c) => after[c.j].func_id === verdict.candidate_id);
-        matches[item.index] = { before_id: fn.func_id, after_id: verdict.candidate_id, relation: verdict.relation, confidence: verdict.confidence, steps: stepList, score: chosen.score };
-        stats[verdict.relation === "same" ? "judge_same" : "judge_partial"]++;
+        const relation = verdict.confidence >= JUDGE_MIN[verdict.relation] ? verdict.relation : "partial";
+        matches[item.index] = { before_id: fn.func_id, after_id: verdict.candidate_id, relation, confidence: verdict.confidence, steps: stepList, score: chosen.score };
+        stats[relation === "same" ? "judge_same" : "judge_partial"]++;
       } else {
+        if (verdict.confidence < 0.6) throw new HttpError(502, "comparison_incomplete", "Модель не смогла уверенно оценить отсутствие функции. Повторите анализ.");
         matches[item.index] = { before_id: fn.func_id, after_id: null, relation: "unmatched", confidence: verdict ? verdict.confidence : 0.5, steps: stepList, score: item.candidates[0].score };
         stats.unmatched++;
       }
@@ -291,7 +278,7 @@ export async function detectFindings({ before, after, matches, units, vectors, l
       explanation:
         type === "OVERLAP"
           ? `Одна норма общая (${ownersText(wide.owners)}), другая — частная (${ownersText(narrow.owners)}): ${a.ref} и ${b.ref}. Это пересечение, а не дублирование между равными подразделениями. ${REVIEW_NOTE}`
-          : `Одинаковая по содержанию функция закреплена за разными подразделениями: ${ownersText(a.owners)} (${a.ref}) и ${ownersText(b.owners)} (${b.ref}). Сходство текста ${Math.round(lexical * 100)} %${basis === "same" && lexical < JACCARD_DUP ? ", совпадение подтверждено моделью" : basis === "overlap" ? ", модель считает функции пересекающимися" : ""}. ${REVIEW_NOTE}`,
+          : `${basis === "overlap" ? "Частично пересекающиеся функции закреплены" : "Одинаковая по содержанию функция закреплена"} за разными подразделениями: ${ownersText(a.owners)} (${a.ref}) и ${ownersText(b.owners)} (${b.ref}). Сходство текста ${Math.round(lexical * 100)} %${basis === "same" && lexical < JACCARD_DUP ? ", совпадение подтверждено моделью" : basis === "overlap" ? ", модель считает функции пересекающимися" : ""}. ${REVIEW_NOTE}`,
       citations: [citation(a), citation(b)],
     });
   }
