@@ -173,7 +173,7 @@ h2 span { font-weight: 600; color: var(--muted); }
 .panel.empty { padding: 28px 24px; display: flex; flex-direction: column; gap: 6px; }
 .panel.empty p { margin: 0; color: var(--text-2); }
 .pills { display: flex; flex-wrap: wrap; gap: 10px; }
-.pill { padding: 8px 14px; border: 1px solid #D5DBE6; border-radius: 9px; background: var(--panel); font: inherit; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.pill { padding: 8px 14px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); font: inherit; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; }
 .pill.on { border-color: var(--accent); color: var(--accent); }
 .pill.static { cursor: default; }
 @media (max-width: 1000px) {

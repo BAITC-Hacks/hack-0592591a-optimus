@@ -61,6 +61,13 @@
   --c-ok: #1E9E63;        --c-ok-text: #177A4B;
   --c-reorg: #0E8FA8;     --c-reorg-text: #0B6F84;
   --sh-panel: 0 1px 2px rgba(14, 31, 69, 0.04), 0 12px 32px rgba(14, 31, 69, 0.06);
+  --panel-2: #F7F9FC;
+  --line-2: #D5DBE6;
+  --flow-line: #C7CEDB;
+  --chip-hover: #DDE7F8;
+  --c-ok-bg: #E3F5EC;
+  --c-reorg-bg: #E6F3F6;
+  --white: #FFFFFF;
 
   /* Type */
   --font-sans: "Golos Text", "Nunito Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

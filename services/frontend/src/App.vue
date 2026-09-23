@@ -247,17 +247,17 @@ onUnmounted(stopClock);
 
 <style scoped>
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 40px; }
-.topbar { position: sticky; top: 0; z-index: 20; background: var(--navy); color: #fff; }
+.topbar { position: sticky; top: 0; z-index: 20; background: var(--navy); color: var(--white); }
 .topbar .wrap { height: 60px; display: flex; align-items: center; gap: 24px; }
 .segments { display: flex; gap: 2px; padding: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 10px; }
 .segments button { white-space: nowrap; padding: 6px 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.78); cursor: pointer; }
-.segments button.active { background: #fff; color: var(--navy); }
+.segments button.active { background: var(--white); color: var(--navy); }
 .spacer { flex: 1; }
 .docs { font-size: 13px; color: rgba(255, 255, 255, 0.66); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.user .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 700; font-size: 12px; }
+.user .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); color: var(--white); font-weight: 700; font-size: 12px; }
 .user .name { color: rgba(255, 255, 255, 0.86); font-weight: 600; }
-.tb-btn { white-space: nowrap; height: 36px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tb-btn { white-space: nowrap; height: 36px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 9px; background: transparent; color: var(--white); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .tb-btn.ghost { border-color: transparent; color: rgba(255, 255, 255, 0.78); }
 .tb-btn:hover { background: rgba(255, 255, 255, 0.1); }
 .page { padding-top: 0; padding-bottom: 48px; display: flex; flex-direction: column; gap: 24px; }

@@ -127,15 +127,15 @@ h2.h-sm { font-size: 17px; line-height: 24px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .ln { width: 14px; height: 2px; background: var(--c-reorg); display: inline-block; }
-.panel.navy { background: var(--navy); border-color: var(--navy); color: #fff; padding: 22px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 32px rgba(14, 31, 69, 0.18); }
-.panel.navy h2 { color: #fff; }
+.panel.navy { background: var(--navy); border-color: var(--navy); color: var(--white); padding: 22px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 32px rgba(14, 31, 69, 0.18); }
+.panel.navy h2 { color: var(--white); }
 .panel.navy ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 21px; color: rgba(255, 255, 255, 0.86); }
 .light-p { margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 14px; }
-.btn-white { align-self: flex-start; margin-top: 4px; height: 38px; padding: 0 16px; border: 0; border-radius: 9px; background: #fff; color: var(--navy); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.btn-white { align-self: flex-start; margin-top: 4px; height: 38px; padding: 0 16px; border: 0; border-radius: 9px; background: var(--white); color: var(--navy); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .link { border: 0; background: transparent; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; }
 .link.light { color: var(--accent-soft); }
 .more { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 2px 6px; font-size: 13px; color: var(--muted); }
-.sep { width: 4px; height: 4px; border-radius: 50%; background: #C7CEDB; }
+.sep { width: 4px; height: 4px; border-radius: 50%; background: var(--flow-line); }
 .muted-s { font-size: 13px; color: var(--muted); }
 .eyebrow-s { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .disclaimer { margin: 0; padding: 0 4px; font-size: 12px; line-height: 18px; color: var(--muted); }

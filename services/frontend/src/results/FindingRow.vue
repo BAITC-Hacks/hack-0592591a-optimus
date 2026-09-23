@@ -76,7 +76,7 @@ const missing = computed(() => props.finding.type === "POTENTIAL_LOSS" && props.
   transition: background var(--t-fast);
 }
 .frow:not(.expanded) .head:hover { background: var(--page); }
-.expanded > .head { background: #F7F9FC; }
+.expanded > .head { background: var(--panel-2); }
 .num { font-family: var(--font-display); font-weight: 800; color: var(--navy); }
 .num:empty::before { content: ""; }
 .type { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; white-space: nowrap; }
@@ -94,9 +94,9 @@ const missing = computed(() => props.finding.type === "POTENTIAL_LOSS" && props.
 .detail { padding: 18px 22px 22px 60px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--panel-line); }
 .panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .panels.single { grid-template-columns: minmax(0, 1fr); }
-.panel { padding: 16px 18px; border-radius: 12px; background: #F7F9FC; display: flex; flex-direction: column; gap: 8px; }
+.panel { padding: 16px 18px; border-radius: 12px; background: var(--panel-2); display: flex; flex-direction: column; gap: 8px; }
 .panel.after { background: var(--panel); border: 1px solid var(--panel-line); }
-.panel.dashed { background: transparent; border: 1px dashed #D5DBE6; }
+.panel.dashed { background: transparent; border: 1px dashed var(--line-2); }
 .panel p { margin: 0; font-size: 14px; line-height: 22px; color: var(--text-2); }
 .eyebrow-s { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 blockquote { margin: 0; font-family: var(--font-quote); font-size: 15px; line-height: 25px; color: var(--text); }

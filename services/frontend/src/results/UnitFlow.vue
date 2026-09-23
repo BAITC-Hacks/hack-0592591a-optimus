@@ -56,7 +56,7 @@ const path = (l) => `M112 ${l.from + H / 2} C 168 ${l.from + H / 2}, 168 ${l.to 
   <svg class="flow" :viewBox="`0 0 336 ${model.height}`" :aria-label="'Подразделения до и после реорганизации'">
     <text x="0" y="12" class="col">ДО</text>
     <text x="336" y="12" class="col" text-anchor="end">ПОСЛЕ</text>
-    <path v-for="(l, i) in model.links" :key="i" :d="path(l)" fill="none" stroke-width="2" :stroke="l.kind === 'reorg' ? 'var(--c-reorg)' : '#C7CEDB'" :stroke-opacity="l.kind === 'reorg' ? 0.6 : 1" />
+    <path v-for="(l, i) in model.links" :key="i" :d="path(l)" fill="none" stroke-width="2" :stroke="l.kind === 'reorg' ? 'var(--c-reorg)' : 'var(--flow-line)'" :stroke-opacity="l.kind === 'reorg' ? 0.6 : 1" />
     <g v-for="r in model.before" :key="r.u.unit_id" class="node" :class="r.status">
       <rect x="0" :y="r.y" width="112" :height="H" rx="8" />
       <text x="10" :y="r.y + 18">{{ label(r.u) }}</text>
@@ -76,11 +76,11 @@ const path = (l) => `M112 ${l.from + H / 2} C 168 ${l.from + H / 2}, 168 ${l.to 
 .col { font-size: 11px; font-weight: 700; fill: var(--muted); letter-spacing: 1.2px; }
 .node rect { fill: var(--chip); }
 .node text { font-size: 12px; font-weight: 600; fill: var(--text-2); }
-.node.created rect { fill: #E3F5EC; }
+.node.created rect { fill: var(--c-ok-bg); }
 .node.created text { fill: var(--c-ok-text); font-weight: 700; }
-.node.reorganized rect, .node.removed rect { fill: #E6F3F6; }
+.node.reorganized rect, .node.removed rect { fill: var(--c-reorg-bg); }
 .node.reorganized text, .node.removed text { fill: var(--c-reorg-text); }
 .node .new { font-size: 10px; fill: var(--c-ok); }
 .clickable { cursor: pointer; }
-.clickable:hover rect { fill: #DDE7F8; }
+.clickable:hover rect { fill: var(--chip-hover); }
 </style>
