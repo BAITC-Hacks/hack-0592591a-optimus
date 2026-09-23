@@ -1,7 +1,6 @@
 <script setup>
 import { ref } from "vue";
 import BrandMark from "./BrandMark.vue";
-import HealthStatus from "./HealthStatus.vue";
 import Icon from "./Icon.vue";
 
 defineProps({ health: { type: Object, required: true } });
@@ -51,7 +50,7 @@ async function submit() {
 <template>
   <div class="auth-page">
     <section class="auth-hero">
-      <BrandMark inverse />
+      <BrandMark />
 
       <div class="auth-hero-body">
         <div class="eyebrow">ИИ-агент · анализ оргструктуры</div>
@@ -63,15 +62,15 @@ async function submit() {
 
         <ul class="features">
           <li>
-            <span class="glass-tile"><Icon name="upload" /></span>
+            <span class="paper-tile"><Icon name="upload" /></span>
             <div><b>Комплекты «до» и «после»</b><span>Word, PDF и Excel</span></div>
           </li>
           <li>
-            <span class="glass-tile"><Icon name="compare" /></span>
+            <span class="paper-tile"><Icon name="compare" /></span>
             <div><b>Сопоставление функций</b><span>Созданные, сохранённые и реорганизованные подразделения</span></div>
           </li>
           <li>
-            <span class="glass-tile"><Icon name="file-search" /></span>
+            <span class="paper-tile"><Icon name="file-search" /></span>
             <div><b>Выводы со ссылкой на источник</b><span>Документ, пункт и цитата</span></div>
           </li>
         </ul>
@@ -79,7 +78,6 @@ async function submit() {
 
       <div class="auth-hero-foot">
         <span>Выводы носят рекомендательный характер</span>
-        <HealthStatus :health="health" inverse />
       </div>
     </section>
 
@@ -89,11 +87,6 @@ async function submit() {
         <p class="muted small subtitle">
           {{ mode === "signup" ? "Создайте учётную запись, чтобы запускать анализ." : "Войдите, чтобы продолжить работу с анализом." }}
         </p>
-
-        <div class="segmented" role="tablist">
-          <button type="button" role="tab" :aria-selected="mode === 'login'" :class="{ active: mode === 'login' }" @click="switchMode('login')">Вход</button>
-          <button type="button" role="tab" :aria-selected="mode === 'signup'" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">Регистрация</button>
-        </div>
 
         <form class="auth-form" @submit.prevent="submit">
           <label v-if="mode === 'signup'" class="field">
@@ -146,73 +139,89 @@ async function submit() {
           </button>
         </form>
 
-        <p class="switch-hint small muted">
-          <template v-if="mode === 'login'">Нет учётной записи? <a href="#" @click.prevent="switchMode('signup')">Зарегистрироваться</a></template>
-          <template v-else>Уже есть учётная запись? <a href="#" @click.prevent="switchMode('login')">Войти</a></template>
-        </p>
       </div>
     </section>
   </div>
 </template>
 
 <style scoped>
-.auth-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(420px, 1fr); }
+/* Paper / report style: cream page, white sheet with hairlines, serif display, teal accent. */
+.auth-page {
+  min-height: 100vh; background: var(--page);
+  display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr);
+  gap: var(--sp-6); align-items: start;
+  width: 100%; max-width: 1160px; margin: 0 auto;
+  padding: var(--sp-10) var(--sp-6) var(--sp-16);
+}
 
 .auth-hero {
-  position: relative; overflow: hidden; color: #fff; background: var(--grad-hero);
+  color: var(--text); background: var(--panel);
+  border: 1px solid var(--panel-line); border-radius: 6px; box-shadow: var(--sh-panel);
   display: flex; flex-direction: column; justify-content: space-between; gap: var(--sp-10);
-  padding: var(--sp-10) var(--sp-12);
+  padding: var(--sp-12); min-height: calc(100vh - var(--sp-10) - var(--sp-16));
 }
-.auth-hero::before, .auth-hero::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255, 255, 255, 0.07); pointer-events: none; }
-.auth-hero::before { width: 560px; height: 560px; right: -200px; top: -220px; }
-.auth-hero::after { width: 380px; height: 380px; left: -140px; bottom: -200px; }
-.auth-hero > * { position: relative; }
+.auth-hero :deep(.brand) { color: var(--accent); }
+.auth-hero :deep(.brand-sub) { color: var(--muted); }
+.auth-hero :deep(.brand-mark circle:nth-of-type(1)) { fill: var(--accent); }
 .auth-hero-body { max-width: 560px; }
-.auth-hero .eyebrow { color: rgba(255, 255, 255, 0.8); }
-.auth-hero h1 { color: #fff; font-size: var(--fs-display); line-height: var(--lh-display); font-weight: 900; margin-top: var(--sp-3); }
-.auth-hero .lead { color: rgba(255, 255, 255, 0.85); font-size: 17px; line-height: 27px; margin-top: var(--sp-4); }
-
-.features { list-style: none; margin: var(--sp-8) 0 0; padding: 0; display: grid; gap: var(--sp-4); }
-.features li { display: flex; gap: var(--sp-4); align-items: center; }
-.features b { display: block; font-size: 15px; }
-.features span:not(.glass-tile) { font-size: 13px; color: rgba(255, 255, 255, 0.75); }
-.glass-tile {
-  width: 44px; height: 44px; border-radius: var(--r-md); flex: none; display: grid; place-items: center;
-  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.22); color: #fff;
+.auth-hero .eyebrow { color: var(--muted); }
+.auth-hero h1 {
+  color: var(--navy); font-family: var(--font-display); font-weight: 700;
+  font-size: 34px; line-height: 44px; margin-top: var(--sp-3);
 }
-.glass-tile .icon { width: 22px; height: 22px; }
+.auth-hero .lead { color: var(--text-2); font-size: 16px; line-height: 26px; margin-top: var(--sp-4); }
+
+.features { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
+.features li { display: flex; gap: var(--sp-4); align-items: center; padding: var(--sp-4) 0; border-top: 1px solid var(--panel-line); }
+.features b { display: block; font-size: 15px; color: var(--text); }
+.features span:not(.paper-tile) { font-size: 13px; color: var(--muted); }
+.paper-tile {
+  width: 40px; height: 40px; border-radius: 8px; flex: none; display: grid; place-items: center;
+  background: var(--chip); color: var(--accent);
+}
+.paper-tile .icon { width: 20px; height: 20px; }
 
 .auth-hero-foot {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap;
-  font-size: 13px; color: rgba(255, 255, 255, 0.75); padding-top: var(--sp-4); border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 13px; color: var(--muted); padding-top: var(--sp-4); border-top: 1px solid var(--panel-line);
 }
-
-.auth-side { display: grid; place-items: center; padding: var(--sp-10) var(--sp-6); background: var(--bg); }
-.auth-card { width: 100%; max-width: 420px; padding: var(--sp-8); }
+.auth-side { display: grid; align-content: start; }
+.card.auth-card {
+  width: 100%; max-width: none; padding: var(--sp-6);
+  background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; box-shadow: var(--sh-panel);
+}
+.auth-card h2 { font-size: 18px; line-height: 26px; font-weight: 800; color: var(--text); }
+.auth-card .muted { color: var(--muted); }
 .subtitle { margin: var(--sp-1) 0 var(--sp-6); }
 
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--sp-6); }
-.segmented button {
-  height: 36px; border: 0; border-radius: var(--r-sm); background: transparent; font: inherit; font-size: 14px; font-weight: 800;
-  color: var(--ink-500); cursor: pointer; transition: background var(--t-fast), color var(--t-fast);
-}
-.segmented button:hover { color: var(--kt-blue-600); }
-.segmented button.active { background: var(--surface); color: var(--kt-blue-600); box-shadow: var(--sh-1); }
-
 .auth-form { display: grid; gap: var(--sp-4); }
+.auth-form .label {
+  font-size: 11px; line-height: 16px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.auth-form .input {
+  background: var(--white); border: 1px solid var(--line-2); border-radius: 8px;
+  box-shadow: none; color: var(--text);
+}
+.auth-form .input::placeholder { color: var(--muted); }
+.auth-form .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 92, 90, 0.18); }
+.auth-form .help { color: var(--muted); }
 .input-icon { display: block; }
+.input-icon .icon { color: var(--muted); }
 .password { padding-right: 48px; }
-.reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--ink-500); }
+.reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.reveal:hover { background: var(--chip); color: var(--accent); }
 .reveal .icon { position: static; transform: none; }
-.auth-form .btn-cta { margin-top: var(--sp-2); }
-.switch-hint { text-align: center; margin-top: var(--sp-5); }
-.switch-hint a { font-weight: 700; }
+.auth-form .alert-error { background: var(--c-loss-bg); border-color: #EFC7C2; color: var(--c-loss-text); border-radius: 8px; }
+.auth-form .alert-error .icon { color: var(--c-loss); }
+.auth-form .btn-cta { margin-top: var(--sp-2); background: var(--accent); color: #fff; box-shadow: none; border-radius: 8px; font-weight: 700; }
+.auth-form .btn-cta:hover { background: #0C4B49; }
+.auth-page :focus-visible { box-shadow: 0 0 0 3px rgba(15, 92, 90, 0.3); }
 
 @media (max-width: 960px) {
-  .auth-page { grid-template-columns: 1fr; }
-  .auth-hero { padding: var(--sp-8) var(--sp-6); gap: var(--sp-6); }
-  .auth-hero h1 { font-size: 28px; line-height: 36px; }
+  .auth-page { grid-template-columns: 1fr; padding: var(--sp-6) var(--sp-4) var(--sp-10); gap: var(--sp-4); }
+  .auth-hero { padding: var(--sp-8) var(--sp-6); gap: var(--sp-6); min-height: 0; }
+  .auth-hero h1 { font-size: 26px; line-height: 34px; }
   .features, .auth-hero-foot { display: none; }
-  .auth-side { padding: var(--sp-6) var(--sp-4) var(--sp-10); }
 }
 </style>

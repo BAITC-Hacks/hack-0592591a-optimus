@@ -12,7 +12,8 @@ import ProgressBar from "./components/ProgressBar.vue";
 import RegulatoryTab from "./components/RegulatoryTab.vue";
 import UploadPanel from "./components/UploadPanel.vue";
 import SummaryView from "./results/SummaryView.vue";
-import UnitPage from "./results/UnitPage.vue";
+import Recommendations from "./results/Recommendations.vue";
+import StructureView from "./results/StructureView.vue";
 import { listAnalyses, pollAnalysis, startAnalysis, startDemo } from "./api.js";
 import { downloadDocx } from "./export.js";
 import { SIDE } from "./domain.js";
@@ -72,6 +73,18 @@ const dupFindings = computed(() => sortedFindings.value.filter((f) => ["POTENTIA
 const recs = computed(() => recommendations(analysis.value?.conclusion_md));
 const module = ref("recs"); // recs | regulatory (design: «Дополнительные проверки»)
 const regulatoryCount = computed(() => (analysis.value?.regulatory ?? []).length);
+const recCards = computed(() => {
+  const f = sortedFindings.value;
+  const n = (type, max, pred = () => true) => Math.min(max, f.filter((x) => x.type === type && pred(x)).length);
+  return n("POTENTIAL_LOSS", 4, (x) => x.severity === "high") + n("POTENTIAL_CONFLICT", 2) + n("POTENTIAL_DUPLICATION", 3);
+});
+const acceptedRecs = ref([]); // titles the expert included on the «Рекомендации» screen
+// The conclusion shown and exported carries the accepted recommendations as its last section.
+const exportMarkdown = computed(() => {
+  const base = analysis.value?.conclusion_md ?? "";
+  if (!acceptedRecs.value.length) return base;
+  return `${base.trimEnd()}\n\n## Принятые рекомендации\n\n${acceptedRecs.value.map((t, i) => `${i + 1}. ${t}`).join("\n")}\n`;
+});
 
 // The open screen survives a reload: the hash holds the analysis id, sessionStorage the
 // screen, unit and module inside it. Per tab and a convenience only, so failures are ignored.
@@ -268,7 +281,7 @@ const exportSubtitle = computed(() => {
 async function downloadConclusion() {
   notice.value = "";
   try {
-    await downloadDocx({ markdown: analysis.value?.conclusion_md ?? "", analysisId: analysisId.value || "analysis", subtitle: exportSubtitle.value });
+    await downloadDocx({ markdown: exportMarkdown.value, analysisId: analysisId.value || "analysis", subtitle: exportSubtitle.value });
   } catch (err) {
     notice.value = `Не удалось подготовить файл: ${err.message}`;
   }
@@ -379,7 +392,7 @@ onUnmounted(stopClock);
           @show-dups="screen = 'dups'"
           @download="downloadConclusion"
         />
-        <UnitPage v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" />
+        <StructureView v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" @show-losses="screen = 'losses'" />
         <section v-else-if="screen === 'losses'" class="screen">
           <div class="screen-head">
             <div><h2>Потеря функций</h2><p class="sub">Каждая функция из действующих положений сверена с новыми. Не найденные — вверху; строка раскрывается в цитаты «было» и «стало».</p></div>
@@ -396,16 +409,12 @@ onUnmounted(stopClock);
           <div v-else class="panel list"><FindingRow v-for="(f, i) in dupFindings" :key="f.finding_id" :finding="f" :documents="analysis.documents" :index="i + 1" :open="i === 0" @open-clause="clauseTarget = $event" /></div>
         </section>
         <section v-else-if="screen === 'recs'" class="screen">
-          <div class="screen-head"><div><h2>Рекомендации и дополнительные проверки</h2><p class="sub">Каждый модуль работает на тех же выводах и тоже ссылается на источники.</p></div></div>
+          <div class="screen-head"><div><h2>Дополнительные проверки</h2><p class="sub">Необязательные модули. Каждый работает на тех же выводах и тоже ссылается на источники.</p></div></div>
           <div class="modules">
-            <button type="button" class="panel module" :class="{ active: module === 'recs' }" @click="module = 'recs'"><b>Рекомендации <span class="mtag">{{ recs.length }} предложений</span></b><span>Перераспределение функций и устранение пересечений</span></button>
+            <button type="button" class="panel module" :class="{ active: module === 'recs' }" @click="module = 'recs'"><b>Рекомендации <span class="mtag">{{ recCards }} {{ recCards === 1 ? "предложение" : recCards < 5 ? "предложения" : "предложений" }}</span></b><span>Перераспределение функций и устранение пересечений</span></button>
             <button type="button" class="panel module" :class="{ active: module === 'regulatory' }" @click="module = 'regulatory'"><b>Соответствие законодательству <span class="mtag">{{ regulatoryCount ? `${regulatoryCount} выводов` : "нет отклонений" }}</span></b><span>Функции против законов, стандартов и требований регулятора</span></button>
           </div>
-          <div v-if="module === 'recs'" class="panel pad">
-            <ol v-if="recs.length" class="recs"><li v-for="(r, i) in recs" :key="i">{{ r }}</li></ol>
-            <p v-else class="empty">Рекомендации приведены в заключении.</p>
-            <button type="button" class="link" @click="screen = 'conclusion'">Заключение целиком →</button>
-          </div>
+          <Recommendations v-if="module === 'recs'" :analysis="analysis" :from-conclusion="recs" @open-clause="clauseTarget = $event" @change="acceptedRecs = $event" />
           <div v-else class="panel pad"><RegulatoryTab :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" /></div>
         </section>
         <section v-else-if="screen === 'matches'" class="screen">
@@ -416,7 +425,7 @@ onUnmounted(stopClock);
           <MatchTable :functions="analysis.functions" :matches="analysis.matches" @open-clause="clauseTarget = $event" />
         </section>
         <section v-else class="screen">
-          <Conclusion :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" :subtitle="exportSubtitle" @notice="notice = $event" />
+          <Conclusion :markdown="exportMarkdown" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" :subtitle="exportSubtitle" @notice="notice = $event" />
         </section>
       </template>
     </main>

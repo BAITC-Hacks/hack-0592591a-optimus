@@ -9,7 +9,9 @@ function fixtureLlm() {
     stats.calls++;
     const rows = [...prompt.matchAll(/^\[([^\]]+)\] (.+)$/gm)].map(m => ({ id: m[1], text: m[2] }));
     let out;
-    if (name.startsWith("structure")) {
+    if (name === "classify") {
+      out = { relevant: true, kind: "unit_regulation", summary: "Synthetic unit duties", reason: "Test fixture" };
+    } else if (name.startsWith("structure")) {
       out = { units: [ ["Audit department", "AUD"], ["Risk department", "RISK"] ].flatMap(([label, abbr]) => {
         const row = rows.find(r => r.text.includes(`${label} (${abbr})`));
         return row ? [{ name: label, abbr, kind: "department", parent: null, source_clause: row.id }] : [];
@@ -22,8 +24,6 @@ function fixtureLlm() {
     } else if (name.startsWith("judge")) {
       const items = JSON.parse(prompt.match(/<document>\s*([\s\S]*?)\s*<\/document>/)[1]);
       out = { results: items.map(item => ({ id: item.id, candidate_id: null, relation: "none", confidence: 1 })) };
-    } else if (name === "report") {
-      out = { conclusion_md: "## Итоги\n\nВыводы сформированы по синтетическим исходным документам. Проверьте цитаты и возможную потерю обязанности готовить отчёты." };
     } else throw new Error(`Unexpected model call in fixture: ${name}`);
     return schema.parse(out);
   } };

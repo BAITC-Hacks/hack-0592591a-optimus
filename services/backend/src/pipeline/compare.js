@@ -312,7 +312,8 @@ export async function detectFindings({ before, after, matches, units, vectors, l
     try {
       const response = await llm.completeJson({
         name: `conflict:${owner}`,
-        schema: ConflictResponse,
+        schema: ConflictResponse.refine(answer => answer.reviews.length === pairs.length && pairs.every((_, i) =>
+          answer.reviews.filter(r => r.pair_id === i + 1).length === 1), "Return one assessment per supplied pair_id"),
         prompt: prompt("conflict", {
           owner,
           pairs: JSON.stringify(

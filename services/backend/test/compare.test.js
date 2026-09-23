@@ -281,3 +281,10 @@ test("source verification preserves side, case and punctuation, allowing whitesp
   assert.equal(out.findings.length, 1);
   assert.equal(out.dropped, 3);
 });
+
+test('missing conflict assessments retain a visible unreviewed candidate', async () => {
+  const after=[fn('after','5.1','Проводит аудиторские проверки.', ['ДККМ'],'perform_audit'),fn('after','5.2','Контролирует качество аудиторских проверок.', ['ДККМ'],'quality_control')];
+  const out=await compareFunctions({before:[],after,units:UNITS,docs:docsOf([],after),llm:stubLlm({conflict:[],duplicates:[{pair_id:1,relation:"none",confidence:1}]})});
+  assert.ok(out.findings.some(f=>f.type==='POTENTIAL_CONFLICT' && f.review.verdict==='unreviewed'));
+  assert.equal(out.stats.conflict_unreviewed,1);
+});

@@ -1,26 +1,21 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import Icon from "../Icon.vue";
 import DistributionBar from "./DistributionBar.vue";
-import FindingRow from "./FindingRow.vue";
-import UnitFlow from "./UnitFlow.vue";
-import { distribution, headline, isPrimary, lead, recommendations, sortFindings } from "./text.js";
+import { distribution, headline, isPrimary, lead, rowTitle, sortFindings } from "./text.js";
 
 const props = defineProps({ analysis: { type: Object, required: true } });
 const emit = defineEmits(["open-clause", "show-units", "show-conclusion", "show-matches", "show-losses", "show-dups", "download"]);
 
-const LIMIT = 7;
-const showAllPrimary = ref(false);
-const showSecondary = ref(false);
-
+const LIMIT = 5; // the overview names only the most critical findings
 const sorted = computed(() => sortFindings(props.analysis.findings ?? []));
 const primary = computed(() => sorted.value.filter(isPrimary));
-const secondary = computed(() => sorted.value.filter((f) => !isPrimary(f)));
-const visible = computed(() => (showAllPrimary.value ? primary.value : primary.value.slice(0, LIMIT)));
+const key = computed(() => primary.value.slice(0, LIMIT));
+const severity = (f) => (f.severity === "high" && (f.type === "POTENTIAL_LOSS" || f.type === "POTENTIAL_CONFLICT") ? { label: "Критично", cls: "crit" } : f.severity === "high" ? { label: "Высокий", cls: "high" } : { label: "Средний", cls: "mid" });
+const ref = (f) => { const c = f.citations?.[0]; return c ? `${c.side === "before" ? "до" : "после"} · п. ${c.clause_id}` : ""; };
 const dist = computed(() => distribution(props.analysis.matches ?? []));
 const title = computed(() => headline(props.analysis));
 const summary = computed(() => lead(props.analysis));
-const recs = computed(() => recommendations(props.analysis.conclusion_md));
 const finished = computed(() => {
   const at = props.analysis.finished_at ? new Date(props.analysis.finished_at) : null;
   return at ? at.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
@@ -50,9 +45,8 @@ const riskCards = computed(() => {
   ];
 });
 const counts = computed(() => {
-  const c = { MOVED: 0, OVERLAP: 0, NOTE: 0 };
-  for (const f of secondary.value) c[f.type] = (c[f.type] || 0) + 1;
-  return c;
+  const f = props.analysis.findings ?? [];
+  return { loss: f.filter((x) => x.type === "POTENTIAL_LOSS").length, dup: f.filter((x) => ["POTENTIAL_DUPLICATION", "POTENTIAL_CONFLICT", "OVERLAP"].includes(x.type)).length };
 });
 </script>
 
@@ -93,54 +87,30 @@ const counts = computed(() => {
     </section>
 
     <section class="body">
-      <div class="main">
-        <div class="sec-head">
-          <h2>Ключевые выводы</h2>
-          <span class="muted-s">{{ Math.min(visible.length, primary.length) }} из {{ (analysis.findings ?? []).length }} · высокая и средняя важность</span>
-        </div>
-        <div v-if="!primary.length" class="panel empty">
-          <div class="eyebrow-s">Существенных отклонений не найдено</div>
-          <p>Все функции редакции «до» нашли эквивалент, признаков дублирования и конфликта нет.</p>
-        </div>
-        <div v-else class="panel list">
-          <FindingRow v-for="(f, i) in visible" :key="f.finding_id" :finding="f" :documents="analysis.documents" :index="i + 1" :open="i === 0" @open-clause="emit('open-clause', $event)" />
-        </div>
-        <div class="more">
-          <button v-if="primary.length > LIMIT" type="button" class="link" @click="showAllPrimary = !showAllPrimary">
-            {{ showAllPrimary ? "Свернуть до семи" : `Показать ещё ${primary.length - LIMIT} важных выводов` }}
-          </button>
-          <span v-if="primary.length > LIMIT && secondary.length" class="sep" />
-          <button v-if="secondary.length" type="button" class="link" @click="showSecondary = !showSecondary">
-            {{ showSecondary ? "Скрыть выводы низкой важности" : `Показать ${secondary.length} выводов низкой важности` }}
-          </button>
-          <span class="muted-s">перераспределено {{ counts.MOVED }} · пересечения общей и частной нормы {{ counts.OVERLAP }} · примечания {{ counts.NOTE }}</span>
-        </div>
-        <div v-if="showSecondary" class="panel list">
-          <FindingRow v-for="f in secondary" :key="f.finding_id" :finding="f" :documents="analysis.documents" @open-clause="emit('open-clause', $event)" />
-        </div>
+      <div class="sec-head">
+        <h2>Ключевые выводы</h2>
+        <span class="muted-s">по критичности · {{ key.length }} из {{ primary.length }}</span>
       </div>
-
-      <aside class="side">
-        <div class="panel units">
-          <div class="sec-head"><h2 class="h-sm">Подразделения</h2><button type="button" class="link" @click="emit('show-units')">Подробно</button></div>
-          <UnitFlow :units="analysis.units" :changes="analysis.unit_changes" :findings="analysis.findings" @select="emit('show-units', $event)" />
-          <div class="legend">
-            <span><i class="sw" style="background: var(--c-ok)" />создано</span>
-            <span><i class="ln" />реорганизовано</span>
-            <span><i class="sw" style="background: var(--c-loss)" />возможная потеря</span>
-            <span><i class="sw" style="background: var(--c-conflict)" />конфликт</span>
-          </div>
-        </div>
-
-        <div class="panel navy">
-          <div class="sec-head"><h2 class="h-sm">Рекомендации</h2><button type="button" class="link light" @click="emit('show-conclusion')">Заключение целиком</button></div>
-          <ol v-if="recs.length"><li v-for="(r, i) in recs" :key="i">{{ r }}</li></ol>
-          <p v-else class="light-p">Рекомендации приведены в заключении.</p>
-          <button type="button" class="btn-white" @click="emit('download')"><Icon name="download" class="icon-sm" />Скачать заключение</button>
-        </div>
-
-        <p class="disclaimer">Выводы носят рекомендательный характер: каждый подтверждён цитатой из документа и требует проверки ответственным сотрудником.</p>
-      </aside>
+      <div v-if="!key.length" class="panel empty">
+        <div class="eyebrow-s">Существенных отклонений не найдено</div>
+        <p>Все функции редакции «до» нашли эквивалент, признаков дублирования и конфликта нет.</p>
+      </div>
+      <div v-else class="panel table">
+        <button v-for="f in key" :key="f.finding_id" type="button" class="krow" @click="emit(f.type === 'POTENTIAL_LOSS' ? 'show-losses' : 'show-dups')">
+          <span class="sev" :class="severity(f).cls">{{ severity(f).label }}</span>
+          <span class="ktitle">{{ rowTitle(f) }}<span v-if="f.units?.length" class="kunits"> · {{ f.units.join(", ") }}</span></span>
+          <span class="kref">{{ ref(f) }}</span>
+          <Icon name="chevron-right" class="icon-sm chev" />
+        </button>
+      </div>
+      <div class="more">
+        <button type="button" class="link" @click="emit('show-losses')">Потеря функций · {{ counts.loss }}</button>
+        <span class="sep" />
+        <button type="button" class="link" @click="emit('show-dups')">Дублирование и конфликты · {{ counts.dup }}</button>
+        <span class="sep" />
+        <button type="button" class="link" @click="emit('show-conclusion')">Заключение</button>
+      </div>
+      <p class="disclaimer">Выводы носят рекомендательный характер: каждый подтверждён цитатой из документа и требует проверки ответственным сотрудником.</p>
     </section>
   </div>
 </template>
@@ -176,9 +146,19 @@ h1 { margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 
 .risk-text b { font-size: 15px; color: var(--navy); }
 .risk-num { font-family: var(--font-display); font-size: 32px; font-weight: 600; color: var(--navy); }
 .eyebrow-s { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-.body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; padding: 32px 0 40px; }
-.main, .side { display: flex; flex-direction: column; gap: 12px; }
-.side { gap: 20px; }
+.body { display: flex; flex-direction: column; gap: 12px; padding: 32px 0 40px; }
+.panel.table { overflow: hidden; display: flex; flex-direction: column; }
+.krow { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto 16px; align-items: center; gap: 16px; padding: 14px 18px; border: 0; border-bottom: 1px solid var(--panel-line); background: var(--white); font: inherit; text-align: left; color: var(--text); cursor: pointer; }
+.krow:last-child { border-bottom: 0; }
+.krow:hover { background: var(--panel-2); }
+.sev { justify-self: start; display: inline-flex; height: 24px; align-items: center; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.sev.crit { background: var(--c-loss-text); color: var(--white); }
+.sev.high { background: var(--c-loss-bg); color: var(--c-loss-text); }
+.sev.mid { background: var(--c-dup-bg); color: var(--c-dup-text); }
+.ktitle { font-size: 14px; line-height: 20px; color: var(--navy); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kunits { color: var(--muted); font-weight: 400; }
+.kref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 3px 8px; border: 1px solid var(--panel-line); border-radius: 6px; background: var(--panel-2); color: var(--navy); white-space: nowrap; }
+.chev { color: var(--muted); }
 .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 h2 { margin: 0; font-family: var(--font-display); font-size: 20px; line-height: 28px; font-weight: 800; color: var(--navy); }
 h2.h-sm { font-size: 17px; line-height: 24px; }
