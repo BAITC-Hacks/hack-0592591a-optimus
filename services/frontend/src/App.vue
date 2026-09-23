@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import AuthPanel from "./AuthPanel.vue";
 import BrandMark from "./BrandMark.vue";
-import HealthStatus from "./HealthStatus.vue";
 import Icon from "./Icon.vue";
 import ClausePanel from "./components/ClausePanel.vue";
 import Conclusion from "./components/Conclusion.vue";
@@ -15,6 +14,7 @@ import UploadPanel from "./components/UploadPanel.vue";
 import SummaryView from "./results/SummaryView.vue";
 import UnitPage from "./results/UnitPage.vue";
 import { listAnalyses, pollAnalysis, startAnalysis, startDemo } from "./api.js";
+import { downloadDocx } from "./export.js";
 import { SIDE } from "./domain.js";
 import { recommendations, sortFindings } from "./results/text.js";
 
@@ -259,15 +259,19 @@ function showUnits(label) {
   window.scrollTo({ top: 0 });
 }
 
-function downloadConclusion() {
-  const id = analysis.value?._id || analysis.value?.analysis_id || "analysis";
-  const blob = new Blob([analysis.value?.conclusion_md ?? ""], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `zaklyuchenie-${id}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
+const notice = ref("");
+const exportSubtitle = computed(() => {
+  const at = analysis.value?.finished_at ? new Date(analysis.value.finished_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  return [docPair.value, at ? `сформировано ${at}` : ""].filter(Boolean).join(" · ");
+});
+// «Скачать заключение» on the overview: DOCX; PDF and Markdown are on the Заключение screen.
+async function downloadConclusion() {
+  notice.value = "";
+  try {
+    await downloadDocx({ markdown: analysis.value?.conclusion_md ?? "", analysisId: analysisId.value || "analysis", subtitle: exportSubtitle.value });
+  } catch (err) {
+    notice.value = `Не удалось подготовить файл: ${err.message}`;
+  }
 }
 
 onMounted(() => {
@@ -286,23 +290,27 @@ onUnmounted(stopClock);
   <template v-if="user">
     <header class="topbar">
       <div class="wrap">
-        <button type="button" class="home" :title="lastDoneId ? 'К последнему отчёту' : 'Новый анализ'" :aria-label="lastDoneId ? 'К последнему отчёту' : 'Новый анализ'" @click="goHome"><BrandMark /></button>
-        <nav v-if="view === 'done' && !showHistory" class="tabs" aria-label="Экраны результатов">
-          <button v-for="[key, label] in SCREENS" :key="key" type="button" :class="{ active: screen === key }" @click="screen = key">{{ label }}</button>
-        </nav>
-        <span v-else-if="!showHistory" class="crumb">{{ view === "idle" ? "Новый анализ" : view === "running" ? "Анализ ИИ" : "Проверка документов" }}</span>
+        <button type="button" class="home" title="На главную" @click="reset"><BrandMark /></button>
         <div class="spacer" />
         <span v-if="view === 'done' && !showHistory" class="docs" :title="docPair">{{ docPair }}</span>
-        <HealthStatus v-else-if="!showHistory" :health="health" />
         <button type="button" class="tb-btn ghost" :class="{ on: showHistory }" @click="toggleHistory"><Icon name="file-text" class="icon-sm" />История<span v-if="historyItems.length" class="count">{{ historyItems.length }}</span></button>
-        <button v-if="view === 'done' && !showHistory" type="button" class="tb-btn primary" @click="downloadConclusion">Экспорт заключения</button>
-        <button v-else-if="view !== 'idle' || showHistory" type="button" class="tb-btn" @click="reset">Новый анализ</button>
+        <button v-if="view !== 'idle' || showHistory" type="button" class="tb-btn primary" @click="reset">Новый анализ</button>
         <div class="user" :title="user.name"><span class="avatar">{{ initials }}</span></div>
         <button type="button" class="tb-btn ghost" @click="logout"><Icon name="log-out" class="icon-sm" />Выйти</button>
       </div>
+      <nav v-if="view === 'done' && !showHistory" class="tabbar" aria-label="Экраны результатов">
+        <div class="wrap tabs">
+          <button v-for="[key, label] in SCREENS" :key="key" type="button" :class="{ active: screen === key }" @click="screen = key">{{ label }}</button>
+        </div>
+      </nav>
     </header>
 
     <main class="wrap page">
+      <div v-if="notice" class="alert alert-error" role="alert">
+        <Icon name="alert-octagon" />
+        <div>{{ notice }}</div>
+        <div class="alert-actions"><button type="button" class="btn btn-outline btn-sm" @click="notice = ''">Закрыть</button></div>
+      </div>
       <div v-if="error" class="alert alert-error" role="alert">
         <Icon name="alert-octagon" />
         <div><b>Не удалось выполнить анализ.</b> {{ error }}</div>
@@ -408,7 +416,7 @@ onUnmounted(stopClock);
           <MatchTable :functions="analysis.functions" :matches="analysis.matches" @open-clause="clauseTarget = $event" />
         </section>
         <section v-else class="screen">
-          <Conclusion :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" />
+          <Conclusion :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" :subtitle="exportSubtitle" @notice="notice = $event" />
         </section>
       </template>
     </main>
@@ -430,10 +438,10 @@ onUnmounted(stopClock);
 .topbar .wrap { height: 64px; display: flex; align-items: center; gap: 24px; }
 .home { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
 .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.tabs { display: flex; gap: 4px; height: 64px; }
+.tabbar { border-top: 1px solid var(--panel-line); background: var(--white); }
+.tabs { display: flex; gap: 4px; height: 48px; overflow-x: auto; }
 .tabs button { white-space: nowrap; padding: 0 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-size: 14px; color: var(--text-2); cursor: pointer; }
 .tabs button.active { color: var(--navy); font-weight: 600; border-bottom-color: var(--accent); }
-.crumb { font-size: 14px; color: var(--muted); }
 .spacer { flex: 1; }
 .docs { font-size: 13px; color: var(--muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user { display: flex; align-items: center; }
@@ -485,14 +493,12 @@ onUnmounted(stopClock);
 main.page > :deep(.upload-card) { margin-top: 16px; }
 main.page > :deep(.progress-card) { margin-top: 32px; }
 @media (max-width: 1400px) {
-  .tabs { order: 10; width: 100%; overflow-x: auto; height: 44px; margin-top: -8px; }
-  .topbar .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 0; gap: 12px 16px; }
   .docs { display: none; }
 }
 @media (max-width: 900px) {
   .wrap { padding: 0 16px; }
   .topbar .wrap { gap: 12px; }
-  .docs, .crumb { display: none; }
+  .docs { display: none; }
   .modules, :deep(.grid4), :deep(.grid3) { grid-template-columns: 1fr; }
   .intro h1 { font-size: 30px; line-height: 38px; }
 }

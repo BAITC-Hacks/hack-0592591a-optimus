@@ -2,38 +2,43 @@
 import { computed } from "vue";
 import { marked } from "marked";
 import Icon from "../Icon.vue";
+import { downloadDocx, downloadMarkdown, downloadPdf } from "../export.js";
 
 const props = defineProps({
   markdown: { type: String, required: true },
   analysisId: { type: String, required: true },
+  subtitle: { type: String, default: "" },
 });
+const emit = defineEmits(["notice"]);
 
 // The text comes from our own backend, but raw HTML in it is never rendered:
 // angle brackets are escaped before Markdown parsing.
 const html = computed(() => marked.parse(props.markdown.replace(/</g, "&lt;"), { async: false, gfm: true, breaks: false }));
 
-function download() {
-  const blob = new Blob([props.markdown], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `zaklyuchenie-${props.analysisId}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+const opts = () => ({ markdown: props.markdown, analysisId: props.analysisId, subtitle: props.subtitle });
+const docx = () => downloadDocx(opts()).catch((err) => emit("notice", `Не удалось собрать DOCX: ${err.message}`));
+const pdf = () => { if (!downloadPdf(opts())) emit("notice", "Браузер заблокировал окно печати. Разрешите всплывающие окна для этого сайта и повторите."); };
+const md = () => downloadMarkdown(opts());
 </script>
 
 <template>
   <section class="card conclusion">
     <div class="card-header">
       <h2>Аналитическое заключение</h2>
-      <button type="button" class="btn btn-cta" @click="download"><Icon name="download" /> Скачать .md</button>
+      <div class="exports">
+        <button type="button" class="btn btn-primary" @click="docx"><Icon name="download" /> Скачать DOCX</button>
+        <button type="button" class="btn btn-outline" @click="pdf"><Icon name="download" /> Скачать PDF</button>
+        <button type="button" class="btn btn-outline" @click="md">Markdown</button>
+      </div>
     </div>
     <div class="prose" v-html="html" />
   </section>
 </template>
 
 <style scoped>
+.exports { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-primary { background: var(--accent); color: var(--white); border-color: var(--accent); }
+.btn-primary:hover { opacity: 0.92; }
 .prose :deep(h2) { font-size: var(--fs-h3); line-height: var(--lh-h3); margin: var(--sp-6) 0 var(--sp-3); }
 .prose :deep(h2:first-child) { margin-top: 0; }
 .prose :deep(p), .prose :deep(li) { margin-bottom: var(--sp-2); }
