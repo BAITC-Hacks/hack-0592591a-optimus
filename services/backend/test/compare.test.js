@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { compareFunctions, matchFunctions, verifyFindings, clauseIndexOf } from "../src/pipeline/compare.js";
 import { stripUnknownRefs, writeConclusion } from "../src/pipeline/report.js";
 import { diffUnits, unitCandidates } from "../src/pipeline/structure.js";
-import { expandOwners } from "../src/pipeline/extract.js";
+import { expandOwners, isCandidate, sectionsOf } from "../src/pipeline/extract.js";
 import { jaccard, normalize, quoteOf, tokens } from "../src/pipeline/util.js";
 
 let counter = 0;
@@ -261,4 +261,13 @@ test("extract: owner strings map to units, ALL_DEPARTMENTS expands to every depa
   assert.deepEqual(expandOwners(["ALL_DEPARTMENTS"], UNITS), ["ДНМ", "ДККМ"]);
   assert.deepEqual(expandOwners(["Директор ДККМ", "днм", "Главный аудитор"], UNITS), ["ДККМ", "ДНМ", "Главный аудитор"]);
   assert.deepEqual(expandOwners(["Блок внутреннего аудита"], UNITS), ["БВА"]);
+});
+
+test("function candidates include flat points, Excel rows, fragments and attachments", () => {
+  for (const clause_id of ["1", "Лист!2", "fragment:f00001", "Приложение 1"]) {
+    assert.ok(isCandidate({ clause_id, text: "Аудит" }));
+  }
+  assert.equal(isCandidate({ clause_id: "Лист!2", text: "123" }), false);
+  assert.equal(sectionsOf([{ clause_id: "1", text: "Приложение: обязанности" }, { clause_id: "1.1", text: "Отдел проводит аудит" }]).length, 1);
+  assert.equal(sectionsOf([{ clause_id: "fragment:f1", text: "Отдел" }, { clause_id: "fragment:f2", text: "Аудит" }]).length, 1);
 });

@@ -15,7 +15,7 @@ import { extractDocument } from "../extractorClient.js";
 // Same pattern as docs/TASK.md §4; the lookbehind keeps "1.10" from matching as "0.".
 const GLUED_ID = /(?<![\d.])(\d{1,2}(?:\.\d{1,2}){0,3})\.\s*(?=[А-ЯЁ«])/g;
 const PAGE_NUMBER = /^\d{1,3}$/;
-const TOC = /^(оглавление|содержание)(?![а-яё])/i; // not \b: in JS it only sees ASCII letters
+const TOC = /^(оглавление|содержание)\s*[:.]?$/i;
 
 // What stage 1 writes to Mongo `analyses.documents[]` (docs/TASK.md §6). Validated before every write.
 export const SIDES = ["before", "after", "regulation"];
@@ -101,7 +101,10 @@ export function buildClauses(extraction, { docId, side }) {
   const append = (text, fragment) => {
     if (!text) return;
     if (!open) {
-      preamble.push(text);
+      // Plain Word paragraphs and unnumbered PDF blocks are still evidence.
+      openClause(`fragment:${fragment.id}`, text, fragment, whereOf(fragment));
+      open.ref = fragment.ref;
+      open = null;
       return;
     }
     open.text = open.text ? `${open.text} ${text}` : text;
@@ -115,6 +118,7 @@ export function buildClauses(extraction, { docId, side }) {
     for (const match of text.matchAll(GLUED_ID)) {
       const id = match[1];
       if (!continuesNumbering(lastNumeric, id)) continue;
+      if (/(?:пп?\.|пункт[а-яё]*|раздел[а-яё]*)\s*$/iu.test(text.slice(0, match.index))) continue;
       append(text.slice(cursor, match.index).trim(), fragment);
       cursor = match.index + match[0].length;
       // Opened empty; the text up to the next accepted id (or the end) is appended to it.
@@ -140,7 +144,13 @@ export function buildClauses(extraction, { docId, side }) {
       const { sheet, row } = fragment.location;
       openClause(`${sheet}!${row}`, text, fragment, whereOf(fragment));
       open.ref = fragment.ref;
+      open.parent_id = null;
       open = null;
+      continue;
+    }
+    if (fragment.kind === "table_row" && !fragment.clause) {
+      open = null;
+      append(text, fragment);
       continue;
     }
     if (fragment.clause && /^\d+(\.\d+)*$/.test(fragment.clause)) {
@@ -156,6 +166,8 @@ export function buildClauses(extraction, { docId, side }) {
       consume(stripLabel(text, fragment.marker), fragment);
     } else if (fragment.kind === "heading" && !lastNumeric) {
       preamble.push(text);
+      open = null;
+      append(text, fragment);
     } else {
       consume(text, fragment);
     }

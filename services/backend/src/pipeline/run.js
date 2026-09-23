@@ -56,7 +56,7 @@ export async function failInterruptedAnalyses() {
  */
 export async function runPipeline(id, files, deps = {}) {
   const started = Date.now();
-  const set = (fields) => analyses().updateOne({ _id: id }, { $set: { ...fields, updated_at: new Date() } });
+  const set = deps.save ?? ((fields) => analyses().updateOne({ _id: id }, { $set: { ...fields, updated_at: new Date() } }));
   let current = null;
   try {
     const llm = deps.llm ?? createLlm(); // throws 503 llm_unavailable without a key
@@ -72,7 +72,8 @@ export async function runPipeline(id, files, deps = {}) {
     const documents = await mapLimit(inputs, PARALLEL_FILES, async (file) => {
       try {
         const result = await (deps.extractClauses ?? extractClauses)(file, { docId: file.docId, side: file.side });
-        if (!result.clauses.length) throw new HttpError(422, "no_clauses", `В документе «${file.filename}» не найдено нумерованных пунктов.`);
+        if (!result.clauses.length) throw new HttpError(422, "no_clauses", `В документе «${file.filename}» не найдено текстовых пунктов или фрагментов.`);
+        if (result.warnings.length) throw new HttpError(422, "incomplete_document", `Документ «${file.filename}» извлечён не полностью: ${result.warnings.join(" ")} Анализ остановлен, чтобы не принять пропущенный текст за потерю функции.`);
         return DocumentSchema.parse({
           doc_id: file.docId,
           side: file.side,
@@ -106,6 +107,7 @@ export async function runPipeline(id, files, deps = {}) {
     const extracted = await Promise.all(docs.map((doc) => extractFunctions(doc, structure.units, llm)));
     const before = extracted.filter((_, i) => docs[i].side === "before").flatMap((r) => r.functions);
     const after = extracted.filter((_, i) => docs[i].side === "after").flatMap((r) => r.functions);
+    if (!before.length) throw new HttpError(422, "no_functions", "В комплекте «до» не распознаны функции. Проверьте документы; достоверное сравнение невозможно.");
     before.forEach((fn, i) => (fn.func_id = `fb_${String(i + 1).padStart(3, "0")}`));
     after.forEach((fn, i) => (fn.func_id = `fa_${String(i + 1).padStart(3, "0")}`));
     const persist = (fns) => fns.map(({ text, ...fn }) => fn); // clause text is already in documents[]

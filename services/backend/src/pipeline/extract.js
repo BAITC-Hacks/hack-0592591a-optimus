@@ -3,33 +3,29 @@
 // quote is the clause text itself, set by code, so M4 cannot be faked.
 import { prompt } from "../prompts.js";
 import { ExtractResponse } from "../schemas.js";
-import { depth, mapLimit, normalize, quoteOf, tokens, topLevel } from "./util.js";
+import { mapLimit, normalize, quoteOf, tokens, topLevel } from "./util.js";
 
-const SKIP_SECTION = /термин|определени|сокращени|приложени|оглавлени|содержание/i;
 const CHUNK = 35; // candidate clauses per LLM call
-const MIN_WORDS = 3;
+const MIN_WORDS = 1;
 const ALL = "ALL_DEPARTMENTS";
 
 const sideLabel = (side) => (side === "before" ? "до реорганизации" : "после реорганизации");
 
-/** Top-level sections of a document, in order, without terms/appendices. */
+/** Preserve every section, including attachments; the classifier decides which entries are duties. */
 export function sectionsOf(clauses) {
   const sections = new Map();
   for (const clause of clauses) {
-    const key = topLevel(clause.clause_id);
+    const key = clause.clause_id.startsWith("fragment:") ? "fragments" : topLevel(clause.clause_id);
     if (!sections.has(key)) sections.set(key, []);
     sections.get(key).push(clause);
   }
-  return [...sections.entries()].filter(([key, list]) => {
-    const heading = list.find((c) => c.clause_id === key);
-    return !(heading && SKIP_SECTION.test(heading.text));
-  });
+  return [...sections.entries()];
 }
 
 const wordCount = (text) => normalize(text).split(" ").filter(Boolean).length;
 
-/** Clauses the LLM must assess: anything below a top-level heading with enough words. */
-export const isCandidate = (clause) => depth(clause.clause_id) >= 2 && wordCount(clause.text) >= MIN_WORDS;
+/** Flat clauses, sheet rows and unnumbered fragments are candidates too. */
+export const isCandidate = (clause) => /\p{L}/u.test(clause.text) && wordCount(clause.text) >= MIN_WORDS;
 
 /** Prompt chunks: ≤ CHUNK candidates each, with their ancestor headings for context. */
 export function chunkSection(key, list) {
@@ -103,7 +99,8 @@ export function underAllDepartments(clause, byId) {
  */
 export async function extractFunctions(doc, units, llm, { prefix } = {}) {
   const sideUnits = units.filter((u) => u.side === doc.side);
-  const block = sideUnits.find((u) => u.kind === "block")?.abbr || "БВА";
+  const blockUnit = sideUnits.find((u) => u.kind === "block");
+  const block = blockUnit?.abbr || blockUnit?.name || "не определён";
   const unitList = sideUnits.map((u) => `${u.abbr || u.name}${u.abbr ? ` — ${u.name}` : ""} (${u.kind})`).join("; ") || "не определены";
   const chunks = sectionsOf(doc.clauses).flatMap(([key, list]) => chunkSection(key, list));
   const byId = new Map(doc.clauses.map((c) => [c.clause_id, c]));

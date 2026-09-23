@@ -50,8 +50,30 @@ test("demo ред. 9: sub-items become child clauses, page numbers and the «О�
     assert.equal(clause.doc_id, "after_1");
     assert.equal(clause.side, "after");
     assert.ok(clause.fragment_ids.length > 0);
-    assert.match(clause.ref, /^п\. \S+, стр\. \d+, строк/);
+    assert.match(clause.ref, /стр\. \d+, строк/);
   }
+});
+
+test("ordinary content text and inline references do not discard or split duties", () => {
+  const fragments = [
+    { id: "f1", kind: "paragraph", text: "3.9. Содержание отчета определяется директором согласно п. 3.10. Порядок согласования сохраняется.", clause: "3.9", ref: "п. 3.9, абзац 1" },
+    { id: "f2", kind: "paragraph", text: "Содержание отчета проверяется директором.", clause: null, ref: "абзац 2" },
+    { id: "f3", kind: "paragraph", text: "3.10. Отдел проверяет выполнение обязательств.", clause: "3.10", ref: "п. 3.10, абзац 3" },
+  ];
+  const result = buildClauses({ fragments }, { docId: "before_1", side: "before" });
+  assert.deepEqual(result.clauses.map(c => c.clause_id), ["3.9", "3.10"]);
+  assert.match(result.clauses[0].text, /согласно п\. 3\.10/);
+  assert.match(result.clauses[0].text, /Содержание отчета проверяется/);
+  assert.equal(result.stats.tail_dropped, 0);
+});
+
+test("unnumbered paragraphs and Word table rows retain independent source references", () => {
+  const fragments = [
+    { id: "f1", kind: "paragraph", text: "Отдел планирует ежегодные проверки.", ref: "абзац 1" },
+    { id: "f2", kind: "table_row", text: "Отдел контролирует исполнение договорных обязательств.", ref: "таблица 1, строка 1" },
+  ];
+  const result = buildClauses({ fragments }, { docId: "before_1", side: "before" });
+  assert.deepEqual(result.clauses.map(c => [c.clause_id, c.text, c.ref]), fragments.map(f => [`fragment:${f.id}`, f.text, f.ref]));
 });
 
 test("clause text excludes its label; a number that does not continue the sequence stays text", () => {
