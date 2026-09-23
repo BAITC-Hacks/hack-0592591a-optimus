@@ -59,6 +59,7 @@ services:
       MONGO_URL: ${MONGO_URL:-mongodb://mongo:27017/hackalem}
       EXTRACTOR_URL: http://extractor:8001
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret-change-me}
     depends_on:
       mongo:
         condition: service_healthy

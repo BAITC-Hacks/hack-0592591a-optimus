@@ -19,8 +19,7 @@ export async function connectDb() {
   await client.connect();
   db = client.db();
   await db.command({ ping: 1 });
-  // Collections and their indexes are created here, idempotently, as models
-  // appear (createIndex is a no-op when the index already exists).
+  await ensureIndexes(db);
   return db;
 }
 
@@ -48,4 +47,9 @@ export async function pingDb(timeoutMs = 2000) {
 export async function closeDb() {
   await client.close();
   db = null;
+}
+
+// Idempotent: createIndex is a no-op when the index already exists.
+async function ensureIndexes(db) {
+  await db.collection("users").createIndex({ email: 1 }, { unique: true, name: "email_unique" });
 }

@@ -55,6 +55,39 @@ check_upload "extract pdf clauses"      '"ref":"п. 2, стр. 1, строка 2
 check_upload "reject unsupported type"  '"unsupported_format"'            notes.txt echo "plain text"
 check "reject missing file" '400' -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/documents/extract"
 
+# --- authentication (signup, login, session cookie, bad input) ---------------
+# A fixed synthetic account: the first run registers it, later runs get 409.
+AUTH_EMAIL="smoke@example.com"; AUTH_PASS="smoke-pass-123"
+JSON=(-H 'content-type: application/json')
+check_re() { # like check, but the expectation is an extended regex
+  local name="$1" expect="$2"; shift 2
+  local out
+  if out="$("${CURL[@]}" "$@" 2>&1)" && grep -q -E -- "$expect" <<<"$out"; then
+    echo "  ok    $name"; pass=$((pass + 1))
+  else
+    echo "  FAIL  $name"; echo "        got: ${out:0:300}"; fail=$((fail + 1))
+  fi
+}
+check_re "signup (or already registered)" "\"email\":\"$AUTH_EMAIL\"|\"email_taken\"" \
+  -X POST "$BASE_URL/api/auth/signup" "${JSON[@]}" -d "{\"name\":\"Smoke\",\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASS\"}"
+check "login"                  "\"email\":\"$AUTH_EMAIL\"" \
+  -X POST "$BASE_URL/api/auth/login" "${JSON[@]}" -d "{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASS\"}"
+check "reject wrong password"  '"invalid_credentials"' \
+  -X POST "$BASE_URL/api/auth/login" "${JSON[@]}" -d "{\"email\":\"$AUTH_EMAIL\",\"password\":\"wrong-password\"}"
+check "reject invalid signup"  '"validation_error"' \
+  -X POST "$BASE_URL/api/auth/signup" "${JSON[@]}" -d '{"name":"","email":"not-an-email","password":"short"}'
+check "me requires session"    '"unauthorized"' "$BASE_URL/api/auth/me"
+# Log in and reuse the httpOnly cookie for /me, both inside one curl container.
+login_then_me="curl -sS --max-time 15 -c /tmp/jar -o /dev/null -X POST -H 'content-type: application/json' \
+  -d '{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASS\"}' '$BASE_URL/api/auth/login' \
+  && curl -sS --max-time 15 -b /tmp/jar '$BASE_URL/api/auth/me'"
+if out="$(docker run --rm --add-host=host.docker.internal:host-gateway --entrypoint sh curlimages/curl:8.10.1 -c "$login_then_me" 2>&1)" \
+   && grep -q -- "\"email\":\"$AUTH_EMAIL\"" <<<"$out"; then
+  echo "  ok    me with session cookie"; pass=$((pass + 1))
+else
+  echo "  FAIL  me with session cookie"; echo "        got: ${out:0:300}"; fail=$((fail + 1))
+fi
+
 # --- main scenario (fill in once the API exists) -----------------------------
 # check "main scenario"      '"result"'  -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{...}'
 # check "rejects bad input"  '422'       -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{"amount":"abc"}'

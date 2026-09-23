@@ -2,10 +2,14 @@ import express from "express";
 import { connectDb, pingDb, closeDb } from "./db.js";
 
 import { HttpError } from "./httpError.js";
+import { auth } from "./routes/auth.js";
 import { documents } from "./routes/documents.js";
 
 const app = express();
 app.disable("x-powered-by");
+// Only Caddy reaches this port; trust its X-Forwarded-Proto so cookies get
+// the Secure flag behind HTTPS.
+app.set("trust proxy", true);
 app.use(express.json({ limit: "1mb" }));
 
 // Used by the compose healthcheck and the frontend start page. Reports 503
@@ -18,6 +22,7 @@ app.get(["/health", "/api/health"], async (_req, res) => {
   });
 });
 
+app.use("/api/auth", auth);
 app.use("/api/documents", documents);
 
 app.use((_req, res) => {
