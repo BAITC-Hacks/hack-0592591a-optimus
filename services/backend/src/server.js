@@ -1,6 +1,9 @@
 import express from "express";
 import { connectDb, pingDb, closeDb } from "./db.js";
 
+import { HttpError } from "./httpError.js";
+import { documents } from "./routes/documents.js";
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -15,13 +18,19 @@ app.get(["/health", "/api/health"], async (_req, res) => {
   });
 });
 
+app.use("/api/documents", documents);
+
 app.use((_req, res) => {
   res.status(404).json({ error: { code: "not_found", message: "Route not found" } });
 });
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
+  if (err instanceof HttpError) {
+    return res.status(err.status).json({ error: { code: err.code, message: err.message } });
+  }
   const status = err.status && err.status < 500 ? err.status : 500;
+  if (status === 500) console.error(err);
   res.status(status).json({
     error: { code: status === 500 ? "internal_error" : "bad_request", message: status === 500 ? "Internal error" : err.message },
   });

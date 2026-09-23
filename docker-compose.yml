@@ -57,8 +57,12 @@ services:
     environment:
       PORT: "8000"
       MONGO_URL: ${MONGO_URL:-mongodb://mongo:27017/hackalem}
+      EXTRACTOR_URL: http://extractor:8001
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
     depends_on:
       mongo:
+        condition: service_healthy
+      extractor:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
