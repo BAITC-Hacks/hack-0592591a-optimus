@@ -90,7 +90,7 @@ LLM calls on the demo pair: 2 (units) + 1 (successors) + ~28 (14 sections × 2 d
 
 - One document per side, 14 sections, ~85K chars each: 1 Общие положения · 2 Цели, задачи и функции · 3 Структура · 4 ДЗО · 5 Права и обязанности · 6–13 procedures · 14 Термины · then «Оглавление» and «Приложения» (drop).
 - Clause ids `N.` / `N.N.` / `N.N.N.` with sub-items `а.` `б.` `в.`. Ред. 8 has an empty clause `5.5.3. ;`.
-- Measured on the extractor (23 Sep, both PDFs): 527 fragments per document, 337 carry a `clause`, every clause the control set needs (3.4, 5.3, 5.3.5, 5.5.2, 5.6.2, 5.6.3, 5.7.2) comes back as one fragment with a ref like `п. 5.6.2, стр. 10, строки 11–12`. Four things the backend must fix in `clauses.js`: (1) one glued id per document, `…Общества. 3.10.Работники могут` sits inside the 3.9 fragment, split it by regex; (2) ~20 fragments that are just a page number, drop them; (3) everything from the fragment starting with «Оглавление» (index ~510 of 527), drop it; (4) sub-items `а.`, `б.` arrive as fragments with `clause: null`, attach them to the preceding clause. The extractor's `section` field is the uppercase title, unusable; derive the top-level section from the clause id.
+- Measured on the extractor (23 Sep, both PDFs): 527 fragments per document, 337 carry a `clause`, every clause the control set needs (3.4, 5.3, 5.3.5, 5.5.2, 5.6.2, 5.6.3, 5.7.2) comes back as one fragment with a ref like `п. 5.6.2, стр. 10, строки 11–12`. Four things the backend must fix in `clauses.js`: (1) one glued id per document, `…Общества. 3.10.Работники могут` sits inside the 3.9 fragment, split it by regex; (2) ~20 fragments that are just a page number, drop them; (3) everything from the fragment starting with «Оглавление» (index ~510 of 527), drop it; (4) sub-items `а.`, `б.` arrive as fragments with `clause: null` and `marker: "а"` (pdf and docx alike), attach them to the preceding clause as `<clause>.<marker>`. The extractor's `section` field is the uppercase title, unusable; derive the top-level section from the clause id.
 - Units are declared in §3.4 as `Название (АББР)`, hierarchy in §3.5–3.9. Functions sit under **role headings**: `5.3. Директор направления внутреннего аудита:` then `5.3.1 … 5.3.12`. БВА-level functions in §2.4.x, Главный аудитор in §5.1–5.2, rights in §5.6–5.8.
 - Ground truth for the pair is in §9. The two PDFs ship in the repo as the demo set.
 
@@ -242,7 +242,7 @@ services/backend/   package.json, package-lock.json, Dockerfile (add: COPY demo 
                     src/{server.js, config.js, db.js, llm.js, schemas.js, routes/analyses.js, prompts/*.md,
                          pipeline/{clauses,structure,extract,compare,report}.js}
                     test/{clauses,compare,controlSet}.test.js + test/fixtures/     (node:test, no extra deps)
-services/extractor/ exists: FastAPI, python-docx / pdfplumber / openpyxl, 19 pytest tests, `POST /extract`
+services/extractor/ exists: FastAPI, python-docx / pdfplumber / openpyxl, 21 pytest tests, `POST /extract`
 services/frontend/  src/{App.vue, api.js, components/{UploadPanel,ProgressBar,UnitsTable,MatchTable,FindingCard,Conclusion}.vue}
 docs/TASK.md        this file; §7 is the API contract
 scripts/smoke.sh    health + demo run + poll + control-set asserts + 2 bad-input cases (wrong type → 415, missing side → 422)
@@ -267,7 +267,7 @@ Cut list if late, in order: conflict rule → LLM cache → auth on analysis rou
 
 - **No vector DB.** ~150 functions per side; Jaccard plus an LLM judge on the remainder covers it. If embeddings are ever wanted, call the same OpenAI-compatible endpoint and do cosine in memory, arrays stored in the analysis document. Same conclusion as the ChatGPT spec.
 - **Mongo on the VM is the compose container.** The VM runs this exact compose file, so `mongo` is already up there. Backend uses `MONGO_URL` as is. No external database, no auth setup; the port is not published.
-- **Parsing lives in the extractor, not in Node.** It already rebuilds Word auto-numbering, cites PDF page and lines and Excel sheet and row, and has 19 tests. The backend only groups fragments into clauses.
+- **Parsing lives in the extractor, not in Node.** It already rebuilds Word auto-numbering, cites PDF page and lines and Excel sheet and row, and has 21 tests. The backend only groups fragments into clauses.
 - **Auth is not in the ТЗ.** It can exist, but the demo run and analysis routes must work without an account, or the clean-clone gate and `smoke.sh` get harder for no points.
 - **No agent framework, no RAG, no embeddings today.** Five plain modules are easier to debug and to explain in the README (K2 asks that the code matches the story).
 - **The LLM never produces a quote.** Quotes come from clause objects; the LLM only points at clause ids and labels them. That is what makes M4 hold.
@@ -280,7 +280,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 | ID | Pts | Status | Evidence in repo | Next gap |
 |---|---|---|---|---|
 | K1 | 25 | ❌ | Vue start page, Express health, single-file extraction; no comparison yet | Demo run end-to-end, then uploads (§11) |
-| K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (19 tests); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected | `llm.js`, modules 1–5 with verify, analyses persisted |
+| K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (21 tests; sub-items carry `marker`, `clause: null`); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected | `llm.js`, modules 1–5 with verify, analyses persisted |
 | K3 | 25 | ⚠️ | Russian README with run steps and the extractor response format, smoke.sh (7 checks), clean-test.sh | Demo run in smoke, expected output (§9), backend tests without key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |
 | K5 | 10 | ❌ | — | O3 recommendations after K1–K4 |

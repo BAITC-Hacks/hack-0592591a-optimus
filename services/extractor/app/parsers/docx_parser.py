@@ -13,7 +13,7 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from ..model import ExtractionError, Fragment, ParseResult, clause_from_text, clause_ref, clean_text
+from ..model import ExtractionError, Fragment, ParseResult, clause_from_text, clause_ref, clean_text, marker_from_text
 
 _HEADING_STYLE = re.compile(r"^(heading|заголовок)\s*(\d)$", re.IGNORECASE)
 _RU_LOWER = "абвгдежзиклмнопрстуфхцчшщэюя"
@@ -137,12 +137,17 @@ def parse_docx(data: bytes) -> ParseResult:
             style_name = block.style.name if block.style is not None else ""
             heading = _HEADING_STYLE.match(style_name)
             is_title = style_name.lower() in ("title", "название")
-            clause = label.rstrip(".)") if label else clause_from_text(text)
+            if label and not any(ch.isdigit() for ch in label):  # "а)" is a sub-item, not a clause
+                clause, marker = None, label.rstrip(".)")
+            else:
+                clause = label.rstrip(".)") if label else clause_from_text(text)
+                marker = None if clause else marker_from_text(text)
             where = f"абзац {paragraph_no}"
             fragment = Fragment(
                 kind="heading" if heading or is_title else ("list_item" if is_list else "paragraph"),
                 text=f"{label} {text}" if label else text,
                 clause=clause,
+                marker=marker,
                 section=section(),
                 location={"paragraph": paragraph_no},
                 ref=clause_ref(clause, where),

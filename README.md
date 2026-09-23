@@ -137,7 +137,7 @@ docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlim
 {
   "document": {"filename": "Положение.docx", "format": "docx", "size_bytes": 36736, "sha256": "…", "title": "Положение о Департаменте закупок", "paragraphs": 4, "tables": 0},
   "fragments": [
-    {"id": "f00003", "kind": "list_item", "text": "1. Планирование закупок.", "clause": "1",
+    {"id": "f00003", "kind": "list_item", "text": "1. Планирование закупок.", "clause": "1", "marker": null,
      "section": "Положение о Департаменте закупок › 3. Функции", "location": {"paragraph": 3}, "ref": "п. 1, абзац 3"}
   ],
   "text": "…весь текст документа по фрагментам…",
@@ -146,7 +146,7 @@ docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlim
 }
 ```
 
-`kind` — `heading`, `paragraph`, `list_item`, `table_row` (Word) или `sheet_row` (Excel). `location` зависит от формата: `{"paragraph"}` или `{"table","row","cells"}` для Word, `{"page","line_start","line_end"}` для PDF, `{"sheet","row","range","cells"}` для Excel. Ошибки возвращаются как `{"error":{"code","message"}}`: `400 bad_request`/`empty_file`, `413 file_too_large`/`document_too_large`, `415 unsupported_format`, `422 unreadable_document`, `503 extractor_unavailable`, `504 extractor_timeout`.
+`kind` — `heading`, `paragraph`, `list_item`, `table_row` (Word) или `sheet_row` (Excel). `clause` — номер пункта (`"5.3.2"`) или `null`; подпункты `а)`, `б.` получают `clause: null` и букву в `marker` (`"а"`), чтобы backend присоединял их к открытому пункту. `location` зависит от формата: `{"paragraph"}` или `{"table","row","cells"}` для Word, `{"page","line_start","line_end"}` для PDF, `{"sheet","row","range","cells"}` для Excel. Ошибки возвращаются как `{"error":{"code","message"}}`: `400 bad_request`/`empty_file`, `413 file_too_large`/`document_too_large`, `415 unsupported_format`, `422 unreadable_document`, `503 extractor_unavailable`, `504 extractor_timeout`.
 
 Регистрация и вход через API (cookie сохраняется в файл `jar` и передаётся в `/api/auth/me`):
 
@@ -171,7 +171,7 @@ WEB_PORT=3100 ./scripts/smoke.sh
 docker compose run --rm --no-deps extractor pytest -q
 ```
 
-Они проверяют: восстановление автонумерации Word и раздела по заголовкам, строки таблиц Word, строки и диапазоны ячеек Excel, склейку перенесённых строк PDF и ссылки «п. N, стр. N, строки N–N», предупреждение для PDF без текстового слоя, определение формата по содержимому, а также отказ на `.txt`, `.doc`, пустой, повреждённый файл и zip-бомбу.
+Они проверяют: восстановление автонумерации Word и раздела по заголовкам, буквенные подпункты (`marker` вместо `clause`) в Word и PDF, строки таблиц Word, строки и диапазоны ячеек Excel, склейку перенесённых строк PDF и ссылки «п. N, стр. N, строки N–N», предупреждение для PDF без текстового слоя, определение формата по содержимому, а также отказ на `.txt`, `.doc`, пустой, повреждённый файл и zip-бомбу.
 
 Проверка запуска из чистого локального клона:
 

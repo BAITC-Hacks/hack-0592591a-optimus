@@ -47,7 +47,8 @@ def _xlsx() -> bytes:
 
 def _pdf(lines: list[str]) -> bytes:
     """Minimal one-page PDF with a Helvetica text layer (ASCII only)."""
-    content = "BT /F1 12 Tf 72 720 Td 14 TL " + " ".join(f"({line}) Tj T*" for line in lines) + " ET"
+    escaped = [line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") for line in lines]
+    content = "BT /F1 12 Tf 72 720 Td 14 TL " + " ".join(f"({line}) Tj T*" for line in escaped) + " ET"
     objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -173,3 +174,39 @@ def test_zip_bomb_rejected(monkeypatch):
         archive.writestr("word/document.xml", "0" * 5000)
     response = _post("bomb.docx", buffer.getvalue())
     assert response.status_code == 413
+
+
+def test_subitems_carry_marker_not_clause():
+    """Sub-items "а)" must not open a clause (docs/TASK.md §4 clauses.js); they carry `marker`."""
+    from docx.oxml.ns import qn
+
+    document = docx.Document()
+    document.add_paragraph("5.3.2. Директор департамента:")
+    # Turn the template's "List Number" list into Russian letters: "а)", "б)".
+    numbering = document.part.numbering_part.element
+    style_num_id = document.styles["List Number"].element.pPr.numPr.numId.val
+    num = next(n for n in numbering.findall(qn("w:num")) if n.get(qn("w:numId")) == str(style_num_id))
+    abstract_id = num.find(qn("w:abstractNumId")).get(qn("w:val"))
+    abstract = next(a for a in numbering.findall(qn("w:abstractNum")) if a.get(qn("w:abstractNumId")) == abstract_id)
+    level = abstract.find(qn("w:lvl"))
+    level.find(qn("w:numFmt")).set(qn("w:val"), "russianLower")
+    level.find(qn("w:lvlText")).set(qn("w:val"), "%1)")
+    document.add_paragraph("планирует аудит;", style="List Number")
+    document.add_paragraph("контролирует качество.", style="List Number")
+    document.add_paragraph("в) написано вручную.")
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    fragments = _post("subitems.docx", buffer.getvalue()).json()["fragments"]
+    assert [(f["text"], f["clause"], f["marker"]) for f in fragments] == [
+        ("5.3.2. Директор департамента:", "5.3.2", None),
+        ("а) планирует аудит;", None, "а"),
+        ("б) контролирует качество.", None, "б"),
+        ("в) написано вручную.", None, "в"),
+    ]
+    assert fragments[1]["ref"] == "абзац 2"
+
+
+def test_pdf_subitem_marker():
+    fragments = _post("order.pdf", _pdf(["5.3. Director:", "a) plans audits;", "b) reports."])).json()["fragments"]
+    assert [(f["clause"], f["marker"]) for f in fragments] == [("5.3", None), (None, "a"), (None, "b")]

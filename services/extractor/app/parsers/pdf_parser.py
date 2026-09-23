@@ -8,7 +8,7 @@ import re
 
 import pdfplumber
 
-from ..model import ExtractionError, Fragment, ParseResult, clause_from_text, clause_ref, clean_text
+from ..model import ExtractionError, Fragment, ParseResult, clause_from_text, clause_ref, clean_text, marker_from_text
 
 MAX_PAGES = 300
 _BULLET = re.compile(r"^\s*[-–—•·▪]\s+")
@@ -65,12 +65,14 @@ def parse_pdf(data: bytes) -> ParseResult:
                 for line in block[1:]:
                     text = _join(text, line)
                 clause = clause_from_text(text)
+                marker = None if clause else marker_from_text(text)
                 heading = len(block) == 1 and _is_heading(text)
                 span = f"строка {first_line}" if first_line == last_line else f"строки {first_line}–{last_line}"
                 result.fragments.append(Fragment(
                     kind="heading" if heading else ("list_item" if _BULLET.match(text) else "paragraph"),
                     text=text,
                     clause=clause,
+                    marker=marker,
                     section=section,
                     location={"page": page_no, "line_start": first_line, "line_end": last_line},
                     ref=clause_ref(clause, f"стр. {page_no}, {span}"),

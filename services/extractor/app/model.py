@@ -16,6 +16,9 @@ _NUMERIC_CLAUSE = re.compile(r"^\s*((?:\d{1,3}\.)+\d{1,3}\.?|\d{1,3}[.)])\s+(?=\
 _NAMED_CLAUSE = re.compile(
     r"^\s*((?:Глава|Раздел|Статья|Часть|Приложение)\s+(?:\d{1,3}|[IVXLC]{1,6}))\b", re.IGNORECASE
 )
+# Sub-item markers "а)", "б.", "a)". They are not clauses: the backend attaches the
+# sub-item to the open clause and builds ids like "5.3.2.а" from this marker.
+_MARKER = re.compile(r"^\s*([а-яёa-z])[.)]\s+(?=\S)")
 _SPACES = re.compile(r"[ \t   ]+")
 
 
@@ -35,6 +38,11 @@ def clean_text(value: Any) -> str:
     return _SPACES.sub(" ", text).strip()
 
 
+def marker_from_text(text: str) -> str | None:
+    match = _MARKER.match(text)
+    return match.group(1) if match else None
+
+
 def clause_from_text(text: str) -> str | None:
     """Clause number written literally at the start of the text, if any."""
     match = _NUMERIC_CLAUSE.match(text) or _NAMED_CLAUSE.match(text)
@@ -50,6 +58,7 @@ class Fragment:
     location: dict[str, Any]
     ref: str  # human-readable citation, e.g. "п. 3.2, абзац 14"
     clause: str | None = None
+    marker: str | None = None  # sub-item letter ("а"); clause stays None for sub-items
     section: str | None = None
 
     def to_dict(self, index: int) -> dict[str, Any]:
@@ -58,6 +67,7 @@ class Fragment:
             "kind": self.kind,
             "text": self.text,
             "clause": self.clause,
+            "marker": self.marker,
             "section": self.section,
             "location": self.location,
             "ref": self.ref,
