@@ -8,5 +8,8 @@ import "@fontsource/pt-serif/400.css";
 import "./styles/tokens.css";
 import "./styles/components.css";
 import App from "./App.vue";
+import DemoApp from "./demo/DemoApp.vue";
 
-createApp(App).mount("#app");
+// `/#demo` opens the UI concept on bundled demo data; the default app is the real flow.
+createApp(window.location.hash.startsWith("#demo") ? DemoApp : App).mount("#app");
+window.addEventListener("hashchange", () => window.location.reload());
