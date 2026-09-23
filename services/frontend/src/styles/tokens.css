@@ -28,7 +28,7 @@
   --line-strong: #CBD6E6;
   --surface: #FFFFFF;
   --surface-muted: #F7F9FC;
-  --bg: #F2F7FE;
+  --bg: #F4F6FA;
 
   /* Unit status */
   --st-created: #0E9F6E;     --st-created-bg: #E4F7EF;
@@ -44,9 +44,28 @@
 
   --mark: #FFF1C2;
 
+  /* Results screens (redesign 23.09): calm panels, one accent, colour only on the finding type */
+  --navy: #0E1F45;
+  --accent: #2F6FE4;
+  --accent-soft: #A9C4F5;
+  --page: #F4F6FA;
+  --panel: #FFFFFF;
+  --panel-line: #E4E8F0;
+  --chip: #EEF2F8;
+  --text: #111B33;
+  --text-2: #3D475F;
+  --muted: #66708A;
+  --c-loss: #D3462F;      --c-loss-text: #B0361F;
+  --c-conflict: #7A4DD6;  --c-conflict-text: #5F3BB0;
+  --c-dup: #E3A83B;       --c-dup-text: #9A6110;
+  --c-ok: #1E9E63;        --c-ok-text: #177A4B;
+  --c-reorg: #0E8FA8;     --c-reorg-text: #0B6F84;
+  --sh-panel: 0 1px 2px rgba(14, 31, 69, 0.04), 0 12px 32px rgba(14, 31, 69, 0.06);
+
   /* Type */
-  --font-sans: "Nunito Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-quote: "PT Serif", Georgia, "Times New Roman", serif;
+  --font-sans: "Golos Text", "Nunito Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Manrope", "Golos Text", "Nunito Sans", sans-serif;
+  --font-quote: "Lora", "PT Serif", Georgia, "Times New Roman", serif;
   --fs-display: 40px; --lh-display: 48px;
   --fs-h1: 30px;      --lh-h1: 38px;
   --fs-h2: 22px;      --lh-h2: 30px;

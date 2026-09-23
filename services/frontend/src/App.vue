@@ -6,14 +6,13 @@ import HealthStatus from "./HealthStatus.vue";
 import Icon from "./Icon.vue";
 import ClausePanel from "./components/ClausePanel.vue";
 import Conclusion from "./components/Conclusion.vue";
-import FindingCard from "./components/FindingCard.vue";
 import MatchTable from "./components/MatchTable.vue";
 import ProgressBar from "./components/ProgressBar.vue";
 import RegulatoryTab from "./components/RegulatoryTab.vue";
-import UnitsTable from "./components/UnitsTable.vue";
 import UploadPanel from "./components/UploadPanel.vue";
+import SummaryView from "./results/SummaryView.vue";
+import UnitPage from "./results/UnitPage.vue";
 import { pollAnalysis, startAnalysis, startDemo } from "./api.js";
-import { FINDING_TYPE, PRIMARY_FINDINGS, SECONDARY_FINDINGS } from "./domain.js";
 
 const health = ref({ state: "checking", text: "проверка…" });
 const user = ref(null);
@@ -23,7 +22,8 @@ const sessionChecked = ref(false);
 const analysis = ref(null); // the API document
 const submitting = ref(false);
 const error = ref("");
-const tab = ref("findings");
+const screen = ref("summary"); // summary | units | regulatory | conclusion | matches
+const selectedUnit = ref("");
 const clauseTarget = ref(null);
 const elapsed = ref(0);
 let timer = null;
@@ -42,17 +42,14 @@ const view = computed(() => {
   return analysis.value.status === "done" ? "done" : analysis.value.status === "failed" ? "failed" : "running";
 });
 const stats = computed(() => analysis.value?.stats ?? {});
-const primary = computed(() => (analysis.value?.findings ?? []).filter((f) => PRIMARY_FINDINGS.includes(f.type)));
-const secondary = computed(() => (analysis.value?.findings ?? []).filter((f) => SECONDARY_FINDINGS.includes(f.type)));
-const counts = computed(() => {
-  const c = {};
-  for (const f of analysis.value?.findings ?? []) c[f.type] = (c[f.type] || 0) + 1;
-  return c;
+const docPair = computed(() => {
+  const docs = analysis.value?.documents ?? [];
+  const name = (side) => docs.filter((d) => d.side === side).map((d) => d.filename).join(", ");
+  return docs.length ? `${name("before")} → ${name("after")}` : "";
 });
-const TABS = [
+const SCREENS = [
+  ["summary", "Итог"],
   ["units", "Подразделения"],
-  ["matches", "Сопоставление функций"],
-  ["findings", "Отклонения"],
   ["regulatory", "Нормативные требования"],
   ["conclusion", "Заключение"],
 ];
@@ -112,6 +109,7 @@ async function run(starter) {
   error.value = "";
   submitting.value = true;
   analysis.value = null;
+  screen.value = "summary";
   try {
     const { analysis_id } = await starter();
     submitting.value = false;
@@ -130,8 +128,25 @@ function reset() {
   stopClock();
   analysis.value = null;
   error.value = "";
-  tab.value = "findings";
+  screen.value = "summary";
   history.replaceState(null, "", location.pathname);
+}
+
+function showUnits(label) {
+  if (typeof label === "string") selectedUnit.value = label;
+  screen.value = "units";
+  window.scrollTo({ top: 0 });
+}
+
+function downloadConclusion() {
+  const id = analysis.value?._id || analysis.value?.analysis_id || "analysis";
+  const blob = new Blob([analysis.value?.conclusion_md ?? ""], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `zaklyuchenie-${id}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 onMounted(() => {
@@ -145,56 +160,42 @@ onUnmounted(stopClock);
 
 <template>
   <template v-if="user">
-    <header class="app-header">
-      <div class="container">
-        <BrandMark />
-        <div class="header-spacer" />
-        <div class="header-actions">
-          <HealthStatus :health="health" />
-          <span class="divider-v" />
-          <div class="row">
-            <div class="avatar">{{ initials }}</div>
-            <div class="who">
-              <b>{{ user.name }}</b>
-              <span>{{ user.email }}</span>
-            </div>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" @click="logout"><Icon name="log-out" class="icon-sm" />Выйти</button>
+    <header class="topbar">
+      <div class="wrap">
+        <BrandMark inverse />
+        <nav v-if="view === 'done'" class="segments" aria-label="Экраны результатов">
+          <button v-for="[key, label] in SCREENS" :key="key" type="button" :class="{ active: screen === key }" @click="screen = key">{{ label }}</button>
+        </nav>
+        <div class="spacer" />
+        <span v-if="view === 'done'" class="docs">{{ docPair }}</span>
+        <HealthStatus v-else :health="health" inverse />
+        <div class="user">
+          <span class="avatar">{{ initials }}</span>
+          <span class="name">{{ user.name }}</span>
         </div>
+        <button v-if="view === 'done'" type="button" class="tb-btn" @click="reset">Новый анализ</button>
+        <button type="button" class="tb-btn ghost" @click="logout"><Icon name="log-out" class="icon-sm" />Выйти</button>
       </div>
     </header>
 
-    <main class="container page stack">
-      <div class="page-head row-between">
-        <div>
-          <div class="eyebrow">Рабочее место аналитика</div>
-          <h1>Анализ <span class="accent">организационной</span> структуры</h1>
-        </div>
-        <div class="stepper" aria-label="Этапы">
-          <span class="s" :class="{ done: view !== 'idle', active: view === 'idle' }"><span class="n">1</span>Загрузка</span>
-          <span class="line" :class="{ done: view !== 'idle' }" />
-          <span class="s" :class="{ done: view === 'done', active: view === 'running' }"><span class="n">2</span>Анализ</span>
-          <span class="line" :class="{ done: view === 'done' }" />
-          <span class="s" :class="{ active: view === 'done' }"><span class="n">3</span>Результаты</span>
-        </div>
-      </div>
-
+    <main class="wrap page">
       <div v-if="error" class="alert alert-error" role="alert">
         <Icon name="alert-octagon" />
         <div><b>Не удалось выполнить анализ.</b> {{ error }}</div>
         <div class="alert-actions"><button type="button" class="btn btn-outline btn-sm" @click="reset"><Icon name="refresh-cw" class="icon-sm" />Повторить</button></div>
       </div>
 
-      <UploadPanel v-if="view === 'idle'" :busy="submitting" @submit="onSubmit" @demo="onDemo" />
+      <template v-if="view === 'idle'">
+        <div class="intro">
+          <div class="eyebrow-s">Рабочее место аналитика</div>
+          <h1>Анализ организационной структуры</h1>
+          <p>Загрузите положения, приказы или оргструктуры «до» и «после» реорганизации. Агент определит созданные и реорганизованные подразделения, сопоставит функции и покажет возможные потери, дублирования и конфликты с цитатами из документов.</p>
+        </div>
+        <UploadPanel :busy="submitting" @submit="onSubmit" @demo="onDemo" />
+      </template>
 
       <template v-else-if="view === 'running'">
         <ProgressBar :stage="analysis?.stage ?? 'queued'" :status="analysis?.status ?? 'running'" :elapsed="elapsed" />
-        <div class="card skeletons" aria-hidden="true">
-          <div class="skeleton" style="width: 40%" />
-          <div class="skeleton" />
-          <div class="skeleton" style="width: 85%" />
-          <div class="skeleton" style="width: 60%" />
-        </div>
       </template>
 
       <template v-else-if="view === 'failed'">
@@ -206,64 +207,30 @@ onUnmounted(stopClock);
       </template>
 
       <template v-else>
-        <div class="alert alert-advisory" role="note">
-          <Icon name="info" />
-          <div><b>Выводы носят рекомендательный характер.</b> Каждый вывод подтверждён фрагментом исходного документа и требует проверки ответственным сотрудником.</div>
-        </div>
-
-        <div class="grid grid-4 kpis">
-          <div class="card kpi">
-            <div class="tile tile-soft"><Icon name="layers" /></div>
-            <div><div class="value tnum">{{ stats.units_before ?? 0 }} → {{ stats.units_after ?? 0 }}</div><div class="label-k">Подразделений до → после</div><div class="delta">создано {{ stats.created ?? 0 }}, реорганизовано {{ stats.reorganized ?? 0 }}</div></div>
+        <SummaryView
+          v-if="screen === 'summary'"
+          :analysis="analysis"
+          @open-clause="clauseTarget = $event"
+          @show-units="showUnits"
+          @show-conclusion="screen = 'conclusion'"
+          @show-matches="screen = 'matches'"
+          @download="downloadConclusion"
+        />
+        <UnitPage v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" />
+        <section v-else-if="screen === 'regulatory'" class="screen">
+          <h2>Нормативные требования</h2>
+          <div class="panel pad"><RegulatoryTab :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" /></div>
+        </section>
+        <section v-else-if="screen === 'matches'" class="screen">
+          <div class="screen-head">
+            <h2>Все сопоставления функций</h2>
+            <button type="button" class="link" @click="screen = 'summary'">← К итогу</button>
           </div>
-          <div class="card kpi">
-            <div class="tile tile-loss"><Icon name="alert-octagon" /></div>
-            <div><div class="value tnum">{{ counts.POTENTIAL_LOSS ?? 0 }}</div><div class="label-k">Возможные потери функций</div><div class="delta">из {{ stats.functions_before ?? 0 }} функций «до»</div></div>
-          </div>
-          <div class="card kpi">
-            <div class="tile tile-dup"><Icon name="copy" /></div>
-            <div><div class="value tnum">{{ counts.POTENTIAL_DUPLICATION ?? 0 }}</div><div class="label-k">Возможные дублирования</div><div class="delta">пересечений общей и частной нормы: {{ counts.OVERLAP ?? 0 }}</div></div>
-          </div>
-          <div class="card kpi">
-            <div class="tile tile-conflict"><Icon name="scale" /></div>
-            <div><div class="value tnum">{{ counts.POTENTIAL_CONFLICT ?? 0 }}</div><div class="label-k">Возможные конфликты</div><div class="delta">кандидатов отклонено моделью: {{ stats.conflict_candidates_rejected ?? 0 }}</div></div>
-          </div>
-        </div>
-
-        <div class="info-bar">
-          <div class="tile tile-sm"><Icon name="file-search" /></div>
-          <div class="info-text">
-            {{ analysis.documents.map((d) => d.filename).join(" · ") }}
-            <span class="muted">· {{ stats.llm_calls }} обращений к модели · {{ Math.round((stats.duration_ms ?? 0) / 1000) }} с · цитат отклонено проверкой: {{ stats.dropped_unverified ?? 0 }}</span>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" @click="reset"><Icon name="upload" class="icon-sm" />Новый анализ</button>
-        </div>
-
-        <div class="card results">
-          <nav class="tabs" role="tablist">
-            <a v-for="[key, label] in TABS" :key="key" href="#" role="tab" :aria-selected="tab === key" :class="{ active: tab === key }" @click.prevent="tab = key">{{ label }}</a>
-          </nav>
-          <div class="tab-body">
-            <UnitsTable v-if="tab === 'units'" :units="analysis.units" :changes="analysis.unit_changes" @open-clause="clauseTarget = $event" />
-            <MatchTable v-else-if="tab === 'matches'" :functions="analysis.functions" :matches="analysis.matches" @open-clause="clauseTarget = $event" />
-            <div v-else-if="tab === 'findings'" class="stack">
-              <div v-if="!analysis.findings.length" class="empty">
-                <div class="tile tile-lg tile-soft"><Icon name="check-circle" /></div>
-                <h3>Отклонений не найдено</h3>
-                <p class="muted">Все функции «до» нашли эквивалент в документах «после».</p>
-              </div>
-              <FindingCard v-for="finding in primary" :key="finding.finding_id" :finding="finding" :documents="analysis.documents" @open-clause="clauseTarget = $event" />
-              <details v-if="secondary.length" class="finding-group">
-                <summary><Icon name="chevron-down" class="icon-sm" /> Перераспределённые функции, пересечения общей и частной нормы, примечания ({{ secondary.length }}) — низкая важность</summary>
-                <div class="group-body">
-                  <FindingCard v-for="finding in secondary" :key="finding.finding_id" :finding="finding" :documents="analysis.documents" @open-clause="clauseTarget = $event" />
-                </div>
-              </details>
-            </div>
-            <RegulatoryTab v-else-if="tab === 'regulatory'" :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" />
-            <Conclusion v-else :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" />
-          </div>
-        </div>
+          <MatchTable :functions="analysis.functions" :matches="analysis.matches" @open-clause="clauseTarget = $event" />
+        </section>
+        <section v-else class="screen">
+          <Conclusion :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" />
+        </section>
       </template>
     </main>
 
@@ -279,21 +246,41 @@ onUnmounted(stopClock);
 </template>
 
 <style scoped>
-.header-spacer { flex: 1; }
-.who { display: flex; flex-direction: column; line-height: 1.25; }
-.who b { font-size: 14px; color: var(--ink-900); }
-.who span { font-size: 12px; color: var(--ink-500); }
-.page-head { flex-wrap: wrap; }
-.kpis .kpi { align-items: center; }
-.kpis .value { font-size: 28px; line-height: 34px; }
-.skeletons { display: grid; gap: var(--sp-3); }
-.results { padding: 0; }
-.results .tabs { padding: 0 var(--sp-5); }
-.tab-body { padding: var(--sp-5); }
-.empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--sp-3); padding: var(--sp-10) var(--sp-6); }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 40px; }
+.topbar { position: sticky; top: 0; z-index: 20; background: var(--navy); color: #fff; }
+.topbar .wrap { height: 60px; display: flex; align-items: center; gap: 24px; }
+.segments { display: flex; gap: 2px; padding: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 10px; }
+.segments button { white-space: nowrap; padding: 6px 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.78); cursor: pointer; }
+.segments button.active { background: #fff; color: var(--navy); }
+.spacer { flex: 1; }
+.docs { font-size: 13px; color: rgba(255, 255, 255, 0.66); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.user .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 700; font-size: 12px; }
+.user .name { color: rgba(255, 255, 255, 0.86); font-weight: 600; }
+.tb-btn { white-space: nowrap; height: 36px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tb-btn.ghost { border-color: transparent; color: rgba(255, 255, 255, 0.78); }
+.tb-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.page { padding-top: 0; padding-bottom: 48px; display: flex; flex-direction: column; gap: 24px; }
+.page > .alert { margin-top: 24px; }
+.intro { display: flex; flex-direction: column; gap: 10px; padding: 44px 0 4px; max-width: 760px; }
+.intro h1 { margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 48px; font-weight: 800; letter-spacing: -0.02em; color: var(--navy); }
+.intro p { margin: 0; font-size: 16px; line-height: 26px; color: var(--text-2); }
+.eyebrow-s { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.screen { display: flex; flex-direction: column; gap: 16px; padding: 32px 0 0; }
+.screen h2 { margin: 0; font-family: var(--font-display); font-size: 24px; line-height: 32px; font-weight: 800; color: var(--navy); }
+.screen-head { display: flex; align-items: baseline; justify-content: space-between; }
+.panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 16px; box-shadow: var(--sh-panel); }
+.panel.pad { padding: 20px; }
+.link { border: 0; background: transparent; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; }
 .boot { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: var(--sp-4); }
-@media (max-width: 720px) {
-  .who, .header-actions .health, .header-actions .divider-v { display: none; }
-  .page-head .stepper { display: none; }
+main.page > :deep(.upload-card) { margin-top: 16px; }
+main.page > :deep(.progress-card) { margin-top: 32px; }
+@media (max-width: 900px) {
+  .wrap { padding: 0 16px; }
+  .topbar .wrap { gap: 12px; }
+  .segments { order: 10; width: 100%; overflow-x: auto; }
+  .topbar .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 10px; }
+  .docs, .user .name { display: none; }
+  .intro h1 { font-size: 30px; line-height: 38px; }
 }
 </style>
