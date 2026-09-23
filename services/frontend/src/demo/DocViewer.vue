@@ -1,21 +1,18 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import Icon from "../Icon.vue";
-import { demo, paraFindingIndex, findingById, SEVERITY } from "./data.js";
+import { demo } from "./data.js";
 
 const props = defineProps({
   finding: { type: Object, default: null }, // active finding (its citations get highlighted)
-  initSide: { type: String, default: null }, // open on a specific document (steps 1–3 preview)
+  initSide: { type: String, default: null }, // open on a specific document (preview)
 });
-const emit = defineEmits(["open-finding", "back"]);
 
 const tab = ref(props.initSide || "after"); // 'before' | 'after' | 'compare' | 'kb'
 watch(() => props.initSide, (v) => { if (v) tab.value = v; });
-const fontSize = ref(15);
 const query = ref("");
 const searchHits = ref([]);
 const searchPos = ref(-1);
-const outlineOpen = ref(false);
 const flashId = ref(null);
 const activeCit = ref(0);
 
@@ -63,15 +60,6 @@ function segments(p, side) {
 
 function paras(side) {
   return demo.documents[side].paragraphs;
-}
-function marginFindings(side, pid) {
-  return (paraFindingIndex[side][pid] || []).map((id) => findingById[id]);
-}
-
-function outline(side) {
-  return paras(side)
-    .filter((p) => (p.clause && /^п\.\d+$/.test(p.clause)) || (!p.clause && /^\d+\.\s*[А-ЯЁ]{2,}/.test(p.text)))
-    .map((p) => ({ id: p.id, label: p.clause ? `${p.clause} ${p.text.slice(0, 60)}` : p.text.slice(0, 64) }));
 }
 
 function scrollToPara(pid, pane) {
@@ -161,11 +149,6 @@ const citCount = computed(() => internalCits.value.length);
         </a>
         <a :class="{ active: tab === 'kb' }" href="#" @click.prevent="tab = 'kb'">База знаний</a>
       </div>
-      <div class="row v-tools">
-        <button class="btn btn-ghost btn-sm btn-icon" title="Уменьшить шрифт" aria-label="Уменьшить шрифт" @click="fontSize = Math.max(13, fontSize - 1)">А−</button>
-        <button class="btn btn-ghost btn-sm btn-icon" title="Увеличить шрифт" aria-label="Увеличить шрифт" @click="fontSize = Math.min(20, fontSize + 1)">А+</button>
-        <button class="btn btn-ghost btn-sm" :class="{ 'v-on': outlineOpen }" @click="outlineOpen = !outlineOpen"><Icon name="layers" class="icon-sm" />Оглавление</button>
-      </div>
     </div>
 
     <div v-if="tab !== 'kb'" class="v-search row">
@@ -185,17 +168,10 @@ const citCount = computed(() => internalCits.value.length);
           <button class="btn btn-ghost btn-sm btn-icon" aria-label="Следующая цитата" @click="goToCitation((activeCit + 1) % citCount)"><Icon name="chevron-right" class="icon-sm" /></button>
         </span>
       </template>
-      <button v-if="finding" class="btn btn-ghost btn-sm v-back" @click="emit('back')"><Icon name="undo" class="icon-sm" />К замечанию</button>
-    </div>
-
-    <div v-if="outlineOpen && tab !== 'kb'" class="v-outline">
-      <button v-for="o in outline(tab === 'before' ? 'before' : 'after')" :key="o.id" class="v-outline-item" @click="scrollToPara(o.id); outlineOpen = false">
-        {{ o.label }}
-      </button>
     </div>
 
     <!-- Single-document view -->
-    <div v-if="tab === 'before' || tab === 'after'" ref="scroller" class="v-body" :style="{ fontSize: fontSize + 'px' }">
+    <div v-if="tab === 'before' || tab === 'after'" ref="scroller" class="v-body">
       <div v-if="tab === 'after' && missingCits.length" class="v-missing">
         <div v-for="(m, i) in missingCits" :key="i" class="v-missing-card">
           <Icon name="search" class="icon-sm" />
@@ -206,13 +182,6 @@ const citCount = computed(() => internalCits.value.length);
         v-for="p in paras(tab)" :key="p.id" :data-pid="p.id"
         class="v-para" :class="{ flash: flashId === p.id, cited: (tab === 'before' ? hlBefore : hlAfter)[p.id] }"
       >
-        <span class="v-margin">
-          <button
-            v-for="f in marginFindings(tab, p.id).slice(0, 3)" :key="f.id"
-            class="v-dot" :class="'dot-' + f.severity" :title="`${SEVERITY[f.severity].label}: ${f.title}`"
-            :aria-label="`Открыть замечание: ${f.title}`" @click="emit('open-finding', f.id)"
-          />
-        </span>
         <b v-if="p.clause" class="v-clause">{{ p.clause }}</b>
         <template v-for="(s, i) in segments(p, tab)" :key="i">
           <mark v-if="s.mark" :class="{ 'v-active': s.active }"><sup class="v-marker">{{ s.marker }}</sup>{{ s.t }}</mark>
@@ -225,7 +194,7 @@ const citCount = computed(() => internalCits.value.length);
     <div v-else-if="tab === 'compare'" class="v-compare">
       <div class="v-pane">
         <div class="v-pane-head">ДО · {{ demo.files.before.edition }}</div>
-        <div ref="scrollerB" class="v-body" :style="{ fontSize: fontSize + 'px' }" @scroll="syncScroll('before')">
+        <div ref="scrollerB" class="v-body" @scroll="syncScroll('before')">
           <p v-for="p in paras('before')" :key="p.id" :data-pid="p.id" class="v-para" :class="{ flash: flashId === p.id, cited: hlBefore[p.id] }">
             <b v-if="p.clause" class="v-clause">{{ p.clause }}</b>
             <template v-for="(s, i) in segments(p, 'before')" :key="i">
@@ -237,7 +206,7 @@ const citCount = computed(() => internalCits.value.length);
       </div>
       <div class="v-pane">
         <div class="v-pane-head">ПОСЛЕ · {{ demo.files.after.edition }}</div>
-        <div ref="scroller" class="v-body" :style="{ fontSize: fontSize + 'px' }" @scroll="syncScroll('after')">
+        <div ref="scroller" class="v-body" @scroll="syncScroll('after')">
           <div v-if="missingCits.length" class="v-missing">
             <div v-for="(m, i) in missingCits" :key="i" class="v-missing-card">
               <Icon name="search" class="icon-sm" />
@@ -259,16 +228,12 @@ const citCount = computed(() => internalCits.value.length);
     <div v-else class="v-body v-kb">
       <template v-if="kbCits.length">
         <div v-for="(c, i) in kbCits" :key="i" class="stack v-kb-item">
-          <div class="row-between">
-            <b class="small">{{ c.doc_title }}</b>
-            <span class="badge badge-info">релевантность {{ Math.round(c.score * 100) }}%</span>
-          </div>
+          <b class="small">{{ c.doc_title }}</b>
           <div class="quote">
             <blockquote>{{ c.quote }}</blockquote>
             <footer>
               <span class="src-chip"><Icon name="book-open" class="icon-sm" />{{ c.collection }}<span v-if="c.clause !== '—'" class="clause">{{ c.clause }}</span></span>
               <span>ред. от {{ c.edition_date }}</span>
-              <button class="btn btn-ghost btn-sm" disabled title="В демо-версии документ недоступен"><Icon name="external-link" class="icon-sm" />Открыть документ полностью</button>
             </footer>
           </div>
           <p v-if="c.demo_placeholder" class="muted small">Демо-заглушка: реальный фрагмент появится после подключения базы знаний.</p>
@@ -298,7 +263,7 @@ const citCount = computed(() => internalCits.value.length);
 .v-outline { max-height: 200px; overflow: auto; border-bottom: 1px solid var(--line); background: var(--surface-muted); display: flex; flex-direction: column; }
 .v-outline-item { text-align: left; background: none; border: 0; font: inherit; font-size: 13px; padding: 6px var(--sp-4); cursor: pointer; color: var(--ink-600); }
 .v-outline-item:hover { background: var(--kt-blue-50); color: var(--kt-blue-600); }
-.v-body { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5) var(--sp-8) var(--sp-6); line-height: 1.65; }
+.v-body { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5) var(--sp-8) var(--sp-6); line-height: 1.65; font-size: 15px; }
 .v-para { position: relative; margin: 0 0 10px; color: var(--ink-800); }
 .v-para.cited { background: var(--surface-muted); border-radius: var(--r-sm); padding: 4px 6px; box-shadow: inset 2px 0 0 var(--kt-blue-500); }
 .v-para.flash { animation: vflash 1.5s var(--ease); }
