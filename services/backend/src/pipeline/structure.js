@@ -7,6 +7,7 @@
 // to successors, which turns "removed" into "reorganized".
 import { prompt } from "../prompts.js";
 import { StructureResponse, SuccessorsResponse } from "../schemas.js";
+import { HttpError } from "../httpError.js";
 import { normalize, tokens, topLevel, unitKey, uniq } from "./util.js";
 
 const UNIT_WORD = "(?:Блок|Департамент|Управление|Отдел|Служба|Направление|Сектор|Группа|Центр|Дирекция|Комитет|Лаборатория|Филиал|Представительство|Служба)";
@@ -48,6 +49,20 @@ export function structureSection(clauses) {
 }
 
 const renderClauses = (clauses) => clauses.map((c) => `[${c.clause_id}] ${c.text}`).join("\n");
+
+// Succession needs duties as evidence, not only the list of job titles.
+export function successorContext(docs) {
+  const selected = [];
+  for (const doc of docs) {
+    const structural = new Set(structureSection(doc.clauses).map(c => c.clause_id));
+    const dutySections = new Set(doc.clauses.filter(c => c.clause_id === topLevel(c.clause_id) && /функци|обязанност|полномочи/i.test(c.text)).map(c => c.clause_id));
+    for (const c of doc.clauses) {
+      if (structural.has(c.clause_id) || dutySections.has(topLevel(c.clause_id))) selected.push(`[${doc.doc_id} · ${c.clause_id}] ${c.text}`);
+    }
+  }
+  let size = 0;
+  return selected.filter(line => (size += line.length + 1) <= 48_000).join("\n");
+}
 
 const sideLabel = (side) => (side === "before" ? "до реорганизации" : "после реорганизации");
 
@@ -138,17 +153,20 @@ export async function buildStructure(docs, llm) {
     try {
       const response = await llm.completeJson({
         name: "successors",
-        schema: SuccessorsResponse,
+        schema: SuccessorsResponse.refine(answer => answer.changes.length === removed.length && removed.every(unit => {
+          const rows = answer.changes.filter(c => normalize(c.unit) === normalize(unit.key));
+          return rows.length === 1 && rows[0].successors.every(key => bySide.after.some(u => normalize(u.key) === normalize(key)));
+        }), "Return every removed unit exactly once, with only supplied successor keys"),
         prompt: prompt("successors", {
           removed: removed.map((u) => `${u.key}: ${labelOf(u)} (до п. ${u.source_clause})`).join("; "),
           after_units: bySide.after.map((u) => `${u.key}: ${labelOf(u)} (после п. ${u.source_clause})`).join("; "),
-          before_clauses: renderClauses(structureSection(docs.filter((d) => d.side === "before").flatMap((d) => d.clauses))),
-          after_clauses: renderClauses(structureSection(docs.filter((d) => d.side === "after").flatMap((d) => d.clauses))),
+          before_clauses: successorContext(docs.filter((d) => d.side === "before")),
+          after_clauses: successorContext(docs.filter((d) => d.side === "after")),
         }),
       });
       successorsOf = new Map(response.changes.map((c) => [normalize(c.unit), c]));
     } catch (err) {
-      console.warn(`[structure] successors call failed (${err.message}); removed units stay "removed"`);
+      throw new HttpError(502, "structure_incomplete", "Не удалось оценить реорганизацию всех подразделений. Анализ остановлен; упразднение не установлено. Повторите анализ.");
     }
     const afterKeys = new Map(bySide.after.map((u) => [normalize(u.key), u]));
     for (const unit of removed) {

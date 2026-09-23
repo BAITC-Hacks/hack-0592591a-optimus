@@ -117,6 +117,8 @@ Format acceptance: real DOCX paragraphs and tables, PDF, XLSX and a mixed set mu
 
 Prompts in `src/prompts/{structure,extract,judge,conflict,report}.md`: JSON only, ids only from the input, Russian text fields, closed category list, no facts beyond the input, cautious wording («возможно», «требует проверки»), never a legal conclusion.
 
+M1 acceptance: successor assessment receives document-qualified structure and duty clauses. A timeout, omitted unit, duplicate unit or unknown successor fails as `structure_incomplete`; it never silently classifies a unit as removed. Reorganization is an advisory functional/structural inference, not proof of legal succession. `test/structure.test.js` covers this contract.
+
 ## 5. Matching and rules (code, unit-tested; the LLM only judges candidates)
 
 Acceptance: a judge timeout, omitted verdict, repeated id or unknown candidate must stop the analysis with `comparison_incomplete`, never produce `POTENTIAL_LOSS` or a clean conclusion. The provider retries before this terminal error; the existing failed-analysis UI lets the user restart. The same completeness rule applies to duplicate review batches.
