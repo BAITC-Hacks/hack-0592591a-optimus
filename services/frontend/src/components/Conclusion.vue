@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { marked } from "marked";
 import Icon from "../Icon.vue";
-import { downloadDocx, downloadMarkdown, downloadPdf } from "../export.js";
+import { downloadDocx, downloadPdf } from "../export.js";
 
 const props = defineProps({
   markdown: { type: String, required: true },
@@ -18,7 +18,6 @@ const html = computed(() => marked.parse(props.markdown.replace(/</g, "&lt;"), {
 const opts = () => ({ markdown: props.markdown, analysisId: props.analysisId, subtitle: props.subtitle });
 const docx = () => downloadDocx(opts()).catch((err) => emit("notice", `Не удалось собрать DOCX: ${err.message}`));
 const pdf = () => { if (!downloadPdf(opts())) emit("notice", "Браузер заблокировал окно печати. Разрешите всплывающие окна для этого сайта и повторите."); };
-const md = () => downloadMarkdown(opts());
 </script>
 
 <template>
@@ -28,7 +27,6 @@ const md = () => downloadMarkdown(opts());
       <div class="exports">
         <button type="button" class="btn btn-primary" @click="docx"><Icon name="download" /> Скачать DOCX</button>
         <button type="button" class="btn btn-outline" @click="pdf"><Icon name="download" /> Скачать PDF</button>
-        <button type="button" class="btn btn-outline" @click="md">Markdown</button>
       </div>
     </div>
     <div class="prose" v-html="html" />

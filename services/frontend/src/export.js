@@ -88,10 +88,6 @@ export async function downloadDocx({ markdown, analysisId, title = "Аналит
   saveBlob(blob, `zaklyuchenie-${analysisId}.docx`);
 }
 
-export function downloadMarkdown({ markdown, analysisId }) {
-  saveBlob(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `zaklyuchenie-${analysisId}.md`);
-}
-
 const PRINT_CSS = `
   @page { size: A4; margin: 20mm 18mm; }
   body { font: 12pt/1.5 "Times New Roman", Georgia, serif; color: #1f1e1d; max-width: 170mm; margin: 0 auto; padding: 24px; }
