@@ -1,12 +1,12 @@
 # ИИ-агент «Анализ организационной структуры и функционала» — spec
 
-Task 1, owner Казахтелеком. This file is the spec (AGENTS.md §1). Stack is what is already in the repo: **Node 22 + Express 5** (`services/backend`), **Vue 3 + Vite 6** (`services/frontend`), **MongoDB 8**, Caddy in front. Verbatim ТЗ and scoring table are in Appendix A/B. Diagrams are plain text on purpose so they show in any editor.
+Task 1, owner Казахтелеком. This file is the spec (AGENTS.md §1). Stack is what is already in the repo: **Node 22 + Express 5** (`services/backend`), **Python extractor** (`services/extractor`, FastAPI, parses docx/pdf/xlsx into fragments), **Vue 3 + Vite 6** (`services/frontend`), **MongoDB 8**, Caddy in front. Verbatim ТЗ and scoring table are in Appendix A/B. Diagrams are plain text on purpose so they show in any editor.
 
 ## 0. TL;DR
 
 - **Input:** «до» and «после» document sets (pdf / docx / xlsx). The organizer's test set is one document per side: «Положение о внутреннем аудите», ред. 8 vs ред. 9, 25 pages, numbered clauses.
 - **Output:** units (created / kept / reorganized / removed), function mapping table, findings (lost / moved / duplicate / conflict of interest) each with document + clause + verbatim quote, and a Russian conclusion marked advisory.
-- **Rule:** **code cuts, matches and counts; the LLM only labels and writes the conclusion.** Every quote is checked to be a substring of its clause before it leaves the API.
+- **Rule:** **the extractor cuts, code matches and counts, the LLM only labels and writes the conclusion.** Every quote is checked to be a substring of its clause before it leaves the API.
 - **Not doing:** vector DB, RAG, agent frameworks, embeddings, OCR. ~150 functions per side fit in memory.
 
 Must-have (ТЗ §7): M1 units classified · M2 lost functions · M3 duplicates + conflicts of interest · M4 source per finding · M5 readable conclusion. Plus pdf/docx/xlsx input, upload + results UI, advisory disclaimer.
@@ -25,17 +25,18 @@ Must-have (ТЗ §7): M1 units classified · M2 lost functions · M3 duplicates 
                  │ Node 22      │   │ Vue 3 build,     │
                  │ Express 5    │   │ static files,    │
                  │ :8000        │   │ Caddy :80        │
-                 └──┬────────┬──┘   └──────────────────┘
-                    │        │
-         ┌──────────▼──┐  ┌──▼───────────────────────────┐
-         │   mongo 8   │  │ LLM API, OpenAI-compatible    │
-         │  analyses   │  │ LLM_BASE_URL + LLM_MODEL      │
-         └─────────────┘  │ OPENAI_API_KEY|NVIDIA_API_KEY │
-                          └──────────────────────────────┘
+                 └─┬───┬─────┬──┘   └──────────────────┘
+                   │   │     │
+     ┌─────────────▼┐ ┌▼──────────┐ ┌▼──────────────────────────────┐
+     │  extractor   │ │  mongo 8  │ │ LLM API, OpenAI-compatible     │
+     │ Python       │ │ analyses  │ │ LLM_BASE_URL + LLM_MODEL       │
+     │ FastAPI :8001│ │ users     │ │ OPENAI_API_KEY|NVIDIA_API_KEY  │
+     │ file→fragments│ └───────────┘ └───────────────────────────────┘
+     └──────────────┘
          demo/before/*.pdf, demo/after/*.pdf are baked into the backend image
 ```
 
-All four services already exist in `docker-compose.yml`; nothing new is added to compose. Mongo stores one document per analysis. The same compose file runs on the VM, so the VM's Mongo is this container: `MONGO_URL=mongodb://mongo:27017/hackalem`, data in the `mongo-data` volume, nothing to provision.
+All five services already exist in `docker-compose.yml`; nothing new is added to compose. The extractor is internal (Caddy does not route it); the backend calls it through `src/extractorClient.js`, which already exists. Mongo stores one document per analysis. The same compose file runs on the VM, so the VM's Mongo is this container: `MONGO_URL=mongodb://mongo:27017/hackalem`, data in the `mongo-data` volume, nothing to provision.
 
 ## 2. What happens on «Анализировать»
 
@@ -50,8 +51,9 @@ UI ──GET /api/analyses/:id every 2 s──▶ {status, stage, ...full result
       │                           │
       ▼                           ▼
  ┌────────────────────────────────────────┐
- │ 1 parse.js            (код)            │  pdf → unpdf, docx → mammoth, xlsx → exceljs
- │ текст → пункты 5.3.2, 5.3.2.а          │  each clause = {doc_id, clause_id, parent_id, text}
+ │ 1 clauses.js   (extractor + код)       │  extractDocument(file) → fragments {id, text, clause, ref, location}
+ │ фрагменты → пункты 5.3.2, 5.3.2.а      │  code groups fragments into clauses:
+ │                                        │  {doc_id, clause_id, parent_id, text, fragment_ids, ref}
  └───────────────────┬────────────────────┘
                      ▼
  ┌────────────────────────────────────────┐
@@ -87,7 +89,8 @@ LLM calls on the demo pair: 2 (units) + 1 (successors) + ~28 (14 sections × 2 d
 ## 3. The data (facts from the two PDFs)
 
 - One document per side, 14 sections, ~85K chars each: 1 Общие положения · 2 Цели, задачи и функции · 3 Структура · 4 ДЗО · 5 Права и обязанности · 6–13 procedures · 14 Термины · then «Оглавление» and «Приложения» (drop).
-- Clause ids `N.` / `N.N.` / `N.N.N.` with sub-items `а.` `б.` `в.`. After PDF extraction numbering sometimes continues **mid-line**: `…Общества. 3.10.Работники могут` → split inside lines. Lone page numbers appear as their own lines. Ред. 8 has an empty clause `5.5.3. ;`.
+- Clause ids `N.` / `N.N.` / `N.N.N.` with sub-items `а.` `б.` `в.`. Ред. 8 has an empty clause `5.5.3. ;`.
+- Measured on the extractor (23 Sep, both PDFs): 527 fragments per document, 337 carry a `clause`, every clause the control set needs (3.4, 5.3, 5.3.5, 5.5.2, 5.6.2, 5.6.3, 5.7.2) comes back as one fragment with a ref like `п. 5.6.2, стр. 10, строки 11–12`. Four things the backend must fix in `clauses.js`: (1) one glued id per document, `…Общества. 3.10.Работники могут` sits inside the 3.9 fragment, split it by regex; (2) ~20 fragments that are just a page number, drop them; (3) everything from the fragment starting with «Оглавление» (index ~510 of 527), drop it; (4) sub-items `а.`, `б.` arrive as fragments with `clause: null`, attach them to the preceding clause. The extractor's `section` field is the uppercase title, unusable; derive the top-level section from the clause id.
 - Units are declared in §3.4 as `Название (АББР)`, hierarchy in §3.5–3.9. Functions sit under **role headings**: `5.3. Директор направления внутреннего аудита:` then `5.3.1 … 5.3.12`. БВА-level functions in §2.4.x, Главный аудитор in §5.1–5.2, rights in §5.6–5.8.
 - Ground truth for the pair is in §9. The two PDFs ship in the repo as the demo set.
 
@@ -95,7 +98,7 @@ LLM calls on the demo pair: 2 (units) + 1 (successors) + ~28 (14 sections × 2 d
 
 | Module | In → Out | How |
 |---|---|---|
-| `parse.js` | file → `Clause[]{doc_id, side, clause_id, parent_id, text}` | Regex `/(?<![\d.])(\d{1,2}(?:\.\d{1,2}){0,3})\.\s*(?=[А-ЯЁA-Z«])/g` anywhere in a line; accept an id only if it continues the sequence (next sibling, first child, or next of an ancestor), else it is text (`п. 3.4` references). Sub-items `/^[а-я]\.\s/`. Drop lone page numbers and everything from «Оглавление». docx auto-numbering: if mammoth text has no clause ids, cite by paragraph index `¶123` instead. |
+| `clauses.js` | file → `Clause[]{doc_id, side, clause_id, parent_id, text, fragment_ids[], ref}` | Call `extractDocument()` (exists). Walk fragments in order: a fragment with `clause` opens a clause; `clause: null` fragments (sub-items `а.`, continuation lines) append to the open one; a glued id inside text `/(?<![\d.])(\d{1,2}(?:\.\d{1,2}){0,3})\.\s*(?=[А-ЯЁ«])/g` splits it, accepted only if it continues the sequence (next sibling, first child, next of an ancestor); drop digit-only fragments and the «Оглавление» tail. `ref` = the first fragment's ref. docx and xlsx need nothing extra: the extractor already rebuilds Word auto-numbering and cites sheet/row. |
 | `structure.js` | clauses → `Unit[]{unit_id, name, abbr, kind: department\|position, parent, source_clause}` + `UnitChange[]{status: kept\|created\|removed\|reorganized, before?, after?, successors[], reason}` | Code regex-extracts `Название (АББР)` pairs; LLM completes kinds and hierarchy from §3; code drops a unit if its name is not in its source clause. Diff by abbr, then one LLM call maps removed → successors. |
 | `extract.js` | clauses → `Function[]{func_id, doc_id, clause_id, owners[], canonical, category, quote}` | Code proposes candidates: every leaf clause / sub-item under a role heading and in §2.4, §4, §6–§12. LLM returns per candidate `{is_function, owners, canonical ≤ 12 words RU, category}`. Heading owners expand: «Директоры департаментов» → all departments. `quote` is the clause text (≤ 300 chars), never LLM output. |
 | `compare.js` | functions before/after → `Match[]`, `Finding[]` | Match by token Jaccard ≥ 0.6 on canonical + text; rest go to the LLM judge in batches of 20 with ≤ 8 candidates each (same section, Jaccard ≥ 0.15). Then rules of §5, then verify. |
@@ -131,7 +134,7 @@ The generic-vs-specific case in ред. 9 («Директоры департам
 {
   "_id": "a_3f9c1b2e7d4a", "status": "queued|running|done|failed", "stage": "compare", "error": null,
   "created_at": "2026-09-23T09:12:00Z",
-  "documents": [{"doc_id": "before_1", "side": "before", "filename": "…", "clauses": [{"clause_id": "5.6.2", "parent_id": "5.6", "text": "…"}]}],
+  "documents": [{"doc_id": "before_1", "side": "before", "filename": "…", "clauses": [{"clause_id": "5.6.2", "parent_id": "5.6", "text": "…", "fragment_ids": ["f00209"], "ref": "п. 5.6.2, стр. 10, строки 11–12"}]}],
   "units": [{"unit_id": "u_dkkm_before", "name": "Департамент контроля качества аудита и методологии", "abbr": "ДККМ", "kind": "department", "parent": "БВА", "source_clause": "3.4"}],
   "unit_changes": [{"status": "created", "after": "u_ditaad_after", "reason": "нет в ред. 8; п. 3.4.а ред. 9"}],
   "functions": {"before": [{"func_id": "fb_041", "clause_id": "5.6.2", "owners": ["ДККМ"], "canonical": "формировать группы контроля качества", "category": "quality_control", "quote": "формировать группы контроля качества с привлечением работников БВА…"}], "after": []},
@@ -139,7 +142,7 @@ The generic-vs-specific case in ред. 9 («Директоры департам
   "findings": [{"finding_id": "f_012", "type": "lost", "severity": "high", "units": ["ДККМ"],
                 "title": "Утрачено право ДККМ формировать группы контроля качества",
                 "explanation": "Закреплено в ред. 8 п. 5.6.2 за ДККМ, в ред. 9 не найдено.",
-                "citations": [{"doc_id": "before_1", "side": "before", "clause_id": "5.6.2", "quote": "формировать группы контроля качества…"}]}],
+                "citations": [{"doc_id": "before_1", "side": "before", "clause_id": "5.6.2", "ref": "п. 5.6.2, стр. 10, строки 11–12", "quote": "формировать группы контроля качества…"}]}],
   "conclusion_md": "…",
   "stats": {"units_before": 4, "units_after": 6, "functions_before": 150, "functions_after": 140, "lost": 3, "moved": 12, "duplicate": 6, "conflict": 2, "dropped_unverified": 0, "llm_calls": 38}
 }
@@ -154,7 +157,9 @@ Every write and every LLM response is validated with zod (`src/schemas.js`). IDs
 | POST | `/api/analyses` | multipart fields `before`, `after`: pdf/docx/xlsx, ≤ 10 files per field, ≤ 20 MB each → `202 {"analysis_id"}` |
 | POST | `/api/analyses/demo` | same, using the bundled pair → `202 {"analysis_id"}` |
 | GET | `/api/analyses/:id` | the document from §6 |
-| GET | `/health`, `/api/health` | `{"status":"ok","mongo":true,"llm_configured":true}` (extend the existing route) |
+| GET | `/health`, `/api/health` | exists: `{"status":"ok","db":"ok"}`; add `"llm":"configured|missing"` |
+| POST | `/api/documents/extract` | exists (one file → fragments); stays as a debugging aid and smoke check |
+| * | `/api/auth/*` | signup / login / me with a session cookie, being added now. Analysis routes stay **public** so reviewers and `smoke.sh` reach the main scenario without an account; if the team decides otherwise, README and smoke must sign up first. |
 
 Errors keep the existing shape `{"error":{"code","message"}}`: `415` wrong type, `413` too big, `422` a side missing, `404` unknown id, `503 llm_unavailable`. The «Скачать .md» button saves `conclusion_md` client-side, no extra route.
 
@@ -235,32 +240,35 @@ Duplicates and conflicts (M3), all in «после»:
 ```
 services/backend/   package.json, package-lock.json, Dockerfile (add: COPY demo ./demo), demo/{before,after}/*.pdf
                     src/{server.js, config.js, db.js, llm.js, schemas.js, routes/analyses.js, prompts/*.md,
-                         pipeline/{parse,structure,extract,compare,report}.js}
-                    test/{parse,compare,controlSet}.test.js + test/fixtures/      (node:test, no extra deps)
+                         pipeline/{clauses,structure,extract,compare,report}.js}
+                    test/{clauses,compare,controlSet}.test.js + test/fixtures/     (node:test, no extra deps)
+services/extractor/ exists: FastAPI, python-docx / pdfplumber / openpyxl, 19 pytest tests, `POST /extract`
 services/frontend/  src/{App.vue, api.js, components/{UploadPanel,ProgressBar,UnitsTable,MatchTable,FindingCard,Conclusion}.vue}
 docs/TASK.md        this file; §7 is the API contract
 scripts/smoke.sh    health + demo run + poll + control-set asserts + 2 bad-input cases (wrong type → 415, missing side → 422)
 ```
 
-Backend deps to add (versions on npm 23 Sep 2026, add via the throwaway container from AGENTS.md §5): `mongodb` 7, `openai` 7, `zod` 4, `multer` 2, `unpdf` 1, `mammoth` 1, `exceljs` 4. Frontend: `marked` 18. Tests without a key: `parse` on a 40-line fixture from ред. 8 (with the glued `3.10.Работники` case and a `п. 3.4` reference), `compare` on hand-written functions and a tampered quote. Run: `docker compose run --rm backend node --test`.
+Backend deps: `mongodb`, `zod`, `multer` are already in `package.json`; add `openai` 7 (npm, 23 Sep 2026) via the throwaway container from AGENTS.md §5. No parsing libraries in Node: the extractor owns parsing. Frontend: add `marked` 18. Tests without a key: `clauses` on a fixture = the extractor's JSON for ред. 8 §3 and §5 (get it with the curl command in the README, keep ~60 fragments including the glued `3.10.Работники` case and a page-number fragment), `compare` on hand-written functions and a tampered quote. Run: `docker compose run --rm backend node --test`.
 
-## 11. Clock (now 14:30, end 18:00)
+## 11. Clock (now 14:45, end 18:00)
 
 | By | Chunk | Owner |
 |---|---|---|
-| 14:55 | Deps added; `db.js`, `llm.js`; `/health` with mongo ping + `llm_configured`; `POST /api/analyses/demo` → 202 and a stub document; upload panel + demo button + polling in Vue. Push. | A backend, B frontend |
-| 15:30 | `parse` + `structure` on the demo pair; «Подразделения» tab shows the 5 rows of §9; `parse.test.js` green. | A, B, C prompts |
+| 15:05 | `openai` added; `llm.js`; `POST /api/analyses` + `/demo` → 202 and a stub document; `clauses.js` over the extractor with the four clean-ups; upload panel + demo button + polling in Vue. Push. | A backend, B frontend, C `llm.js` |
+| 15:40 | `structure` on the demo pair; «Подразделения» tab shows the 5 rows of §9; `clauses.test.js` green. | A, B, C prompts |
 | 16:15 | `extract` + `compare`; «Отклонения» and «Сопоставление» tabs; §9 findings with correct clauses; `compare.test.js` green. | A, B, C judge prompt |
 | 16:50 | `report`; `smoke.sh` runs the demo; `node --test` green without a key. | C, A |
 | 17:15 | README RU (11 items), reviewer key decided (AGENTS.md §8), scorecard updated. | C |
 | 17:40 | `clean-test.sh` on a second laptop; freeze; final push ≤ 17:50. | all |
 
-Cut list if late, in order: conflict rule → xlsx → docx → LLM cache. Never cut: demo run, citations, verify.
+Cut list if late, in order: conflict rule → LLM cache → auth on analysis routes (never required). Never cut: demo run, citations, verify.
 
 ## 12. Decisions
 
 - **No vector DB.** ~150 functions per side; Jaccard plus an LLM judge on the remainder covers it. If embeddings are ever wanted, call the same OpenAI-compatible endpoint and do cosine in memory, arrays stored in the analysis document. Same conclusion as the ChatGPT spec.
 - **Mongo on the VM is the compose container.** The VM runs this exact compose file, so `mongo` is already up there. Backend uses `MONGO_URL` as is. No external database, no auth setup; the port is not published.
+- **Parsing lives in the extractor, not in Node.** It already rebuilds Word auto-numbering, cites PDF page and lines and Excel sheet and row, and has 19 tests. The backend only groups fragments into clauses.
+- **Auth is not in the ТЗ.** It can exist, but the demo run and analysis routes must work without an account, or the clean-clone gate and `smoke.sh` get harder for no points.
 - **No agent framework, no RAG, no embeddings today.** Five plain modules are easier to debug and to explain in the README (K2 asks that the code matches the story).
 - **The LLM never produces a quote.** Quotes come from clause objects; the LLM only points at clause ids and labels them. That is what makes M4 hold.
 - **Optional after K1–K4:** O3 recommendations as one more section of the report prompt. O1/O2 not today.
@@ -271,9 +279,9 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 
 | ID | Pts | Status | Evidence in repo | Next gap |
 |---|---|---|---|---|
-| K1 | 25 | ❌ | Skeleton only: `/health`, hello page | Demo run end-to-end, then uploads (§11) |
-| K2 | 25 | ⚠️ | Compose with 4 services, Caddy routes, Express + Vue skeletons, healthchecks | `llm.js`, modules 1–5 with verify, Mongo persistence |
-| K3 | 25 | ⚠️ | README describes the real stack, smoke.sh, clean-test.sh | Demo run in smoke, expected output (§9), tests without key |
+| K1 | 25 | ❌ | Vue start page, Express health, single-file extraction; no comparison yet | Demo run end-to-end, then uploads (§11) |
+| K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (19 tests); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected | `llm.js`, modules 1–5 with verify, analyses persisted |
+| K3 | 25 | ⚠️ | Russian README with run steps and the extractor response format, smoke.sh (7 checks), clean-test.sh | Demo run in smoke, expected output (§9), backend tests without key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |
 | K5 | 10 | ❌ | — | O3 recommendations after K1–K4 |
 
