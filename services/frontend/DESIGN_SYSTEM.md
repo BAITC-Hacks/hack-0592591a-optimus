@@ -280,7 +280,7 @@ export const FINDING_TYPE = {
 |---|---|
 | `src/AuthPanel.vue` | Split auth screen: hero band with glass icon tiles (§5.1), white card with a segmented login/signup switch, inputs with leading icons and a show/hide password button, error alert (§6.12), orange CTA (§6.1) |
 | `src/App.vue` | App shell with sticky white header (§4), API status pill, user avatar, page stepper (§6.7), advisory banner (§6.8), KPI tiles (§6.11), info bar (§5.6), results tabs |
-| `src/components/UploadPanel.vue` | Two dropzones «До» / «После» with file-type chips (§6.6), file list, the one orange CTA «Анализировать» (§6.1) and an outline button for the control set |
+| `src/components/UploadPanel.vue` | Two dropzones «До» / «После» with file-type chips (§6.6), file list, the one orange CTA «Анализировать» (§6.1) |
 | `src/components/ProgressBar.vue` | Linear progress and the five pipeline steps as done / running / pending tiles (§6.7) |
 | `src/components/UnitsTable.vue` | Table (§6.5) with unit status badges (§2.3) and source chips (§6.9) |
 | `src/components/MatchTable.vue` | Table with filter chips (§5.5), relation badges and source chips |

@@ -4,7 +4,7 @@ import Icon from "../Icon.vue";
 import { fileTypeClass } from "../domain.js";
 
 const props = defineProps({ busy: { type: Boolean, default: false } });
-const emit = defineEmits(["submit", "demo"]);
+const emit = defineEmits(["submit"]);
 
 const ACCEPT = ".pdf,.docx,.xlsx,.xlsm,.xls";
 const SUPPORTED = /\.(pdf|docx|xlsx|xlsm|xls)$/i;
@@ -97,10 +97,6 @@ const sizeOf = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFix
       <button type="button" class="btn btn-cta btn-lg" :disabled="!ready" @click="emit('submit', { before: [...files.before], after: [...files.after] })">
         Анализировать <Icon name="arrow-right" />
       </button>
-      <button type="button" class="btn btn-outline btn-lg" :disabled="busy" @click="emit('demo')">
-        <Icon name="play" /> Запустить на контрольном комплекте
-      </button>
-      <span class="muted small hint">Контрольный комплект: «Положение о внутреннем аудите», редакции 8 и 9 (обезличенные PDF из репозитория).</span>
     </div>
   </section>
 </template>
@@ -111,5 +107,4 @@ const sizeOf = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFix
 .zone { display: grid; gap: var(--sp-3); }
 .types { justify-content: center; gap: var(--sp-2); margin-top: var(--sp-2); }
 .actions { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; padding-top: var(--sp-2); }
-.hint { flex-basis: 100%; }
 </style>
