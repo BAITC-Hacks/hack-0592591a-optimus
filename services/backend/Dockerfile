@@ -5,6 +5,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 COPY demo ./demo
+# Tests ship in the image: docker compose run --rm --no-deps backend node --test
+COPY test ./test
 USER node
 EXPOSE 8000
 HEALTHCHECK --interval=5s --timeout=3s --retries=12 CMD wget -qO- http://127.0.0.1:8000/health || exit 1
