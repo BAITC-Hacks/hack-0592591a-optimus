@@ -193,6 +193,18 @@ export async function detectFindings({ before, after, matches, units, vectors, l
         explanation: `Закреплено в документах «до» (${fn.ref}) за ${ownersText(fn.owners)}. В документах «после» эквивалентной обязанности не найдено (проверено: ${stepsText(m.steps)}). ${REVIEW_NOTE}`,
         citations: [citation(fn)],
       });
+    } else if (m.relation === "partial" || m.basis === "partial") {
+      // Only a partial equivalent exists: reported as a possible (partial) loss of medium importance.
+      const target = afterById.get(m.after_id);
+      const ownersChanged = !sameSet(fn.owners.map(normalize), target.owners.map(normalize));
+      makeFinding(findings, {
+        type: "POTENTIAL_LOSS",
+        severity: "medium",
+        units: [...new Set([...fn.owners, ...target.owners])],
+        title: `Возможная частичная потеря функции: ${fn.canonical}`,
+        explanation: `Закреплено в документах «до» (${fn.ref}) за ${ownersText(fn.owners)}. В документах «после» найден только частичный эквивалент: ${target.ref}${ownersChanged ? ` у ${ownersText(target.owners)}` : ""} (оценка модели ${Math.round(m.confidence * 100)} %). Часть обязанности могла быть утрачена. ${REVIEW_NOTE}`,
+        citations: [citation(fn), citation(target)],
+      });
     } else if (m.relation === "moved") {
       const target = afterById.get(m.after_id);
       makeFinding(findings, {

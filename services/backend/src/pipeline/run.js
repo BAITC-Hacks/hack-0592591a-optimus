@@ -125,6 +125,7 @@ export async function runPipeline(id, files, deps = {}) {
       llm_model: llm.stats.model ?? llm.model ?? null,
       llm_calls: llm.stats.calls,
       llm_retries: llm.stats.retries,
+      embedding_calls: llm.stats.embedding_calls ?? 0,
       embeddings: llm.stats.embeddings,
       duration_ms: Date.now() - started,
     };

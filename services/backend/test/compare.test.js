@@ -99,6 +99,19 @@ test("a weak «partial» judge answer is not accepted", async () => {
   assert.equal(llm.stats.calls, 1);
 });
 
+test("a confident «partial» judge answer becomes a medium partial-loss finding citing both clauses", async () => {
+  const before = [fn("before", "5.7.2", "доводить до сведения Руководителей Общества результаты по запросу оказания консультационных услуг;", ["ДНМ"], "interact", "доводить результаты консультаций")];
+  const after = [fn("after", "2.4.7", "консультировать по запросу и информировать о результатах мониторинга СВК;", ["БВА"], "interact", "консультировать руководителей")];
+  const llm = stubLlm({ judge: [{ id: before[0].func_id, candidate_id: after[0].func_id, relation: "partial", confidence: 0.8 }] });
+  const result = await compareFunctions({ before, after, units: UNITS, docs: docsOf(before, after), llm });
+  assert.equal(result.matches[0].relation, "moved");
+  assert.equal(result.matches[0].basis, "partial");
+  const loss = result.findings.find((f) => f.type === "POTENTIAL_LOSS");
+  assert.equal(loss.severity, "medium");
+  assert.deepEqual(loss.citations.map((c) => c.clause_id), ["5.7.2", "2.4.7"]);
+  assert.equal(result.findings.filter((f) => f.type === "MOVED").length, 0);
+});
+
 test("without embeddings the judge sees lexical candidates; none → POTENTIAL_LOSS with the clause quote", async () => {
   const before = [fn("before", "5.6.2", "формировать группы контроля качества с привлечением работников БВА в соответствии с ресурсным планом;", ["ДККМ"], "quality_control", "формировать группы контроля качества")];
   const after = [fn("after", "5.5.2", "организует мониторинг качества работников БВА по плану контроля;", ["ДККМ"], "quality_control", "мониторинг качества аудита")];
