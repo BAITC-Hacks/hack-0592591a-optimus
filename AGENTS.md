@@ -153,7 +153,22 @@ Reliability and security baseline (cheap, and most ТЗ score it):
 
 ## 9. README is a deliverable (and a gate)
 
-Update the README **in the same commit** as the feature it describes. Never claim what does not work; the AI judge cross-checks claims against code. Keep the template's sections; they map one-to-one onto the 8 items the regulation requires (5.4.15): what it does and for whom · main scenario step by step · architecture (diagram plus one paragraph per service) · technologies, models and data · **run from scratch** (prerequisite: Docker only; exact commands; dependencies; every env var) · how to verify (smoke script, sample inputs, expected outputs) · access for reviewers · live demo URL · known limitations · third-party and pre-existing materials · team and who built what. English; commands copy-pasteable; no marketing prose.
+Update the README **in the same commit** as the feature it describes. Write it **in Russian**, in clear Markdown for the hackathon jury, with copy-pasteable commands and no marketing prose. Analyze the current repository first: code, manifests, compose configuration, scripts and `docs/TASK.md`. Only include claims supported by these files or checks actually run; never invent features, technologies, integrations, model names, results or team contributions. A planned stack or an unused env variable is not an implemented feature. If the repo is still a skeleton, say so explicitly.
+
+Cover these 11 items (the project name is the document title):
+1. **Название проекта** — use the repository's confirmed name; do not invent branding.
+2. **Краткое описание** — the problem, intended users and purpose; state when the product task is not yet defined.
+3. **Что реализовано** — only existing functions and capabilities.
+4. **Как работает решение** — the actual main scenario from input to result, step by step.
+5. **Технологии** — implemented languages, frameworks, libraries, AI models, APIs and external services, with versions and reasons where documented.
+6. **Архитектура проекта** — a diagram of existing components plus a short explanation of each service and its interactions.
+7. **Установка и запуск** — prerequisites (Git, Docker with Compose, shell for scripts), exact clean-clone commands, dependencies and every environment parameter, distinguishing active settings from unused placeholders. All application tooling runs in Docker (§5).
+8. **Как проверить решение** — a repeatable jury scenario, sample inputs, expected outputs, smoke and clean-clone commands; describe exactly what the current tests cover.
+9. **Данные и интеграции** — actual data sources, datasets, licenses, seed commands, APIs and external services; explicitly state when absent.
+10. **Ограничения** — missing, partial or stubbed functionality, unverified behavior and task requirements not met.
+11. **Развёрнутая версия** — the deployed URL if documented; distinguish a configured address from a verified live deployment.
+
+Also retain **Доступ для жюри**, **Надёжность и безопасность**, **Сторонние и заранее подготовленные материалы**, and **Команда** to cover reviewer access, disclosures and ownership. References elsewhere in this playbook to "Known limitations", "Access for reviewers" and the technology table mean the corresponding Russian sections. Record task requirement coverage once the ТЗ exists; do not fabricate criteria or points. Keep all 8 regulation-required items (5.4.15): purpose, architecture, technologies, install, run, dependencies, environment parameters and main-scenario verification. Use explicit statements about missing information instead of empty template placeholders. Do not claim a check passed unless it was actually run in Docker (§3).
 
 ## 10. Git workflow for 3 people and 5 hours
 
@@ -189,7 +204,7 @@ If the main scenario is not working by 16:00, cut scope, tell the team, and upda
 - [ ] `./scripts/clean-test.sh` passes using only `.env.example` plus exactly what the README tells reviewers
 - [ ] Reviewer access is documented and works without any team member's account
 - [ ] Every mandatory requirement in `docs/TASK.md` is ticked or listed under Known limitations
-- [ ] README has all 8 required items and matches reality: run steps, env vars, verify steps, live URL, disclosures
+- [ ] README is in Russian, covers the 11 items in §9 and all 8 regulation-required items, and matches reality: run steps, env vars, verify steps, live URL, disclosures
 - [ ] No personal secrets in the repo: `git grep -nEi "sk-[a-z0-9]|nvapi-|api[_-]?key\s*="` shows only what §8 allowed
 - [ ] `git log` shows at least one meaningful commit in every hour since 13:00
 - [ ] No TODO stubs pretending to be features; no placeholder text left in `Caddyfile` or README; no unused files

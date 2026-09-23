@@ -1,108 +1,164 @@
-# <Project name>
+# Optimus — HackAlem AI
 
-> One sentence: what it does, for whom, and the result they get.
+## Краткое описание
 
-**Track:** <track> · **Task:** <task number and title> · **Live demo:** https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com
+Сейчас репозиторий содержит инфраструктурную заготовку команды Optimus для HackAlem AI: запуск контейнеров, HTTP-точку входа, MongoDB и скрипты проверки. Она предназначена для подготовки окружения команды и проверки запуска жюри.
 
-<!-- Keep this file truthful at every commit. It is the pitch for the technical review, and if reviewers
-     cannot launch the project by following it, the team is excluded with no second chance.
-     The sections below cover the 8 items the regulation requires; do not remove any.
-     Delete these comments and every unused placeholder before the final push. -->
+Продуктовая задача, проблема конечного пользователя и целевая аудитория пока не определены в репозитории: [docs/TASK.md](docs/TASK.md) содержит незаполненный шаблон ТЗ. Прикладное решение ещё не реализовано.
 
-## What it does
+## Что реализовано
 
-<!-- Purpose: 3-5 sentences. The problem, the user, what the product does about it. No marketing prose. -->
+- Единый [docker-compose.yml](docker-compose.yml) с сервисами Caddy и MongoDB, проверками состояния и постоянными томами.
+- HTTP-маршрут `/health`, возвращающий `ok`, и стартовая текстовая страница Caddy.
+- Настройки адреса сайта и опубликованных портов через переменные окружения.
+- [scripts/smoke.sh](scripts/smoke.sh): проверка ответа `/health` и HTTP-статуса главной страницы.
+- [scripts/clean-test.sh](scripts/clean-test.sh): проверка закоммиченного состояния в отдельном локальном клоне с настройками из `.env.example`.
 
-## Main scenario
+Это проверка инфраструктуры. Пользовательского интерфейса приложения, API бизнес-логики и AI-функций пока нет.
 
-<!-- Numbered steps from input to result, exactly as a reviewer would click through them. -->
-1.
-2.
-3.
+## Как работает решение
 
-### Task requirements coverage
+Доступный сейчас сценарий:
 
-| # | Requirement (from the task specification) | Status | Where in the code |
-|---|---|---|---|
-| 1 | | done / partial / not done | `services/...` |
+1. Проверяющий копирует `.env.example` в `.env` и запускает Docker Compose.
+2. Compose запускает Caddy и MongoDB и проверяет состояние обоих контейнеров.
+3. Пользователь открывает `http://localhost:3000/`. Caddy возвращает текст: `HackAlem AI: pipeline works. The application replaces this page.`
+4. Запрос `http://localhost:3000/health` возвращает `ok`.
+5. Проверяющий запускает smoke-скрипт и получает результаты двух HTTP-проверок.
 
-## Architecture
+Входные данные текущего сценария — HTTP-запросы. Результат — статические ответы Caddy. Обработки пользовательских данных и обращений к MongoDB из приложения пока нет.
 
-<!-- Diagram (Mermaid renders on GitHub) plus one short paragraph per service. -->
+## Технологии
+
+- **Docker Compose** — описывает единое окружение для локального запуска и VM.
+- **Caddy**, образ `caddy:2-alpine` — обслуживает текущую страницу и `/health`; конфигурация находится в [Caddyfile](Caddyfile).
+- **MongoDB**, образ `mongo:8.0` — отдельный сервис базы данных с постоянным томом. Прикладной код его пока не использует.
+- **Bash** — язык проверочных скриптов; они также используют стандартные системные утилиты, включая `grep`, `sed` и `mktemp`.
+- **curl**, образ `curlimages/curl:8.10.1` — выполняет HTTP-запросы smoke-проверки внутри контейнера.
+- **Git** — нужен для получения репозитория и проверки чистого клона.
+
+Фреймворки backend/frontend, AI-модели и внешние AI API пока не подключены. Предлагаемый стек из AGENTS.md не является текущей реализацией.
+
+## Архитектура проекта
 
 ```mermaid
 flowchart LR
-  user([User]) --> caddy[caddy] --> web[web]
-  caddy --> api[api] --> mongo[(MongoDB)]
-  api --> llm[[LLM API]]
+    user[Браузер / smoke-скрипт] -->|HTTP :3000| caddy[Caddy]
+    config[Caddyfile] --> caddy
+    caddy --> response[Статическая страница и /health]
+    mongo[(MongoDB)] --> volume[(Том mongo-data)]
 ```
 
-## Technology, models and data
+**Caddy** — единственный сервис с опубликованными портами: по умолчанию HTTP `3000` и HTTPS `3443`. Сейчас он возвращает статические ответы напрямую. Проксирование в API и web-сервис описано только в комментариях Caddyfile. Тома `caddy-data` и `caddy-config` сохраняют его данные и конфигурацию.
 
-| Area | Choice | Why |
-|---|---|---|
-| Backend | | |
-| Frontend | | |
-| Database | MongoDB 8 | |
-| LLM | <provider / model> | |
-| Data | <source, license, synthetic or real; how the demo data is loaded> | |
+**MongoDB** — независимый контейнер в сети Compose. Порт базы не опубликован на хосте; данные хранятся в `mongo-data`. Его healthcheck выполняет команду `ping`. Связи между Caddy и MongoDB в текущей реализации нет.
 
-## Run from scratch
+Каталога `services/`, Dockerfile приложения и файлов прикладных зависимостей пока нет.
 
-Prerequisites: **Docker** with Compose (Docker Desktop 4.x or Docker Engine 27+). Nothing else is installed on the host; every dependency is inside the images (see the manifests in `services/*`).
+## Установка и запуск
+
+Нужны Git, работающий Docker с плагином Compose и Bash со стандартными системными утилитами для проверочных скриптов. Для загрузки репозитория и контейнерных образов требуется доступ к сети. Устанавливать Python, Node.js или зависимости приложения на хост не требуется.
 
 ```bash
-git clone <repo-url> && cd <repo>
-cp .env.example .env        # then fill in the values marked "required" below
-docker compose up --build
+git clone https://github.com/BAITC-Hacks/hack-0592591a-optimus.git
+cd hack-0592591a-optimus
+cp .env.example .env
+docker compose up --build -d --wait
 ```
 
-Open http://localhost:3000.
+Откройте [локальную страницу](http://localhost:3000). Порты `3000` и `3443` должны быть свободны; при необходимости измените их в `.env` перед запуском.
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `SITE_ADDRESS` | no | `:80` | `:80` = plain HTTP. A public hostname turns on automatic HTTPS (then set `WEB_PORT=80`, `HTTPS_PORT=443`) |
-| `WEB_PORT` | no | `3000` | Host port of the HTTP entrypoint |
-| `HTTPS_PORT` | no | `3443` | Host port for HTTPS (only used with a public hostname) |
-| `MONGO_URL` | no | `mongodb://mongo:27017/hackalem` | MongoDB connection string inside the compose network |
-| `LLM_PROVIDER` | no | `openai` | `openai` or `nvidia` |
-| `LLM_MODEL` | for AI features | empty | Model name at the provider |
-| `LLM_BASE_URL` | no | empty | Override the provider endpoint (leave empty for the default) |
-| `OPENAI_API_KEY` | for AI features | empty | See "Access for reviewers" |
-| `NVIDIA_API_KEY` | if `LLM_PROVIDER=nvidia` | empty | See "Access for reviewers" |
+Все параметры перечислены в [.env.example](.env.example):
 
-## How to verify
+- `SITE_ADDRESS=:80` — адрес сайта для Caddy; по умолчанию обычный HTTP. Публичное доменное имя включает автоматический HTTPS при доступных DNS и публичных портах; на VM используются `WEB_PORT=80` и `HTTPS_PORT=443`.
+- `WEB_PORT=3000` — порт HTTP на хосте.
+- `HTTPS_PORT=3443` — порт HTTPS на хосте; при `SITE_ADDRESS=:80` HTTPS не настроен.
+- `MONGO_URL=mongodb://mongo:27017/hackalem` — заготовка строки подключения для будущего приложения, сейчас не используется.
+- `LLM_PROVIDER=openai` — заготовка выбора провайдера, сейчас не используется.
+- `LLM_MODEL` — пустая заготовка имени модели, сейчас не используется.
+- `LLM_BASE_URL` — пустая заготовка адреса AI API, сейчас не используется.
+- `OPENAI_API_KEY` — пустая заготовка ключа, сейчас не используется.
+- `NVIDIA_API_KEY` — пустая заготовка ключа, сейчас не используется.
+
+Для текущей версии ключи и изменения `.env.example` не нужны. `.env` исключён из Git.
+
+Просмотр состояния и логов:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 caddy mongo
+```
+
+Остановка с сохранением данных:
+
+```bash
+docker compose down
+```
+
+## Как проверить решение
+
+После запуска выполните:
 
 ```bash
 ./scripts/smoke.sh
 ```
 
-<!-- What the script checks, plus sample inputs (path in repo) and the expected outputs, step by step. -->
+Ожидаемый результат текущего сценария: две успешные проверки (`health endpoint`, `entrypoint is up`), итог `passed=2 failed=0` и код завершения `0`. Скрипт ищет `ok` в ответе `/health` и проверяет HTTP `200` для `/`; он не проверяет бизнес-логику, AI или обработку некорректных данных.
 
-## Access for reviewers
+Если `WEB_PORT` изменён в `.env`, передайте тот же порт скрипту явно: скрипт сам `.env` не читает. Например, для порта `3100`:
 
-<!-- Regulation 5.6.6: reviewers must be able to run the main scenario without any team member's account.
-     State exactly what they need and where to get it: a test account, a capped reviewer API key, sample data.
-     If a credential was submitted through the platform instead, say so here. -->
+```bash
+WEB_PORT=3100 ./scripts/smoke.sh
+```
 
-## Reliability and security
+Проверка запуска из чистого локального клона:
 
-<!-- Input validation, error format, timeouts/retries on the LLM, upload limits, how secrets are handled. -->
+```bash
+./scripts/clean-test.sh
+```
 
-## Known limitations
+Этот скрипт клонирует **закоммиченное** состояние текущего репозитория во временную директорию, копирует `.env.example`, использует отдельный Compose-проект и порты `3900`/`3901`, вызывает сборку без кеша, запускает сервисы и выполняет smoke-проверку. После завершения удаляет тестовые контейнеры, тома и временный клон. Ожидаемая последняя строка: `>> Clean-clone test passed`. Сейчас сервисы используют готовые образы, поэтому прикладных образов для сборки нет.
 
-<!-- Be specific and honest. Anything stubbed or partial is listed here. -->
+Незакоммиченные изменения в эту проверку не попадают. При занятых тестовых портах задайте другой базовый порт через `CLEAN_TEST_PORT`.
 
-## Third-party and pre-existing materials
+## Данные и интеграции
 
-- Before the event we prepared only a generic development-environment template (agent instructions in `AGENTS.md`, a Docker Compose skeleton, smoke-test scripts) and provisioned the demo VM. All product code was written during the hackathon.
-- Libraries: see the dependency manifests in each `services/*` directory.
-- <models, datasets, other external materials, with licenses>
+Датасетов, демонстрационных записей, загрузчиков данных и seed-команд в репозитории нет. MongoDB запускается без прикладных данных. Вызовов внешних API и интеграций с AI-провайдерами нет; соответствующие переменные окружения только зарезервированы.
 
-**AI tools used in development:** OpenAI Codex, Claude Code.
+Внешние зависимости запуска — GitHub для клонирования и реестры контейнеров для получения образов. Caddy поддерживает автоматические сертификаты при настройке публичного домена; для локального HTTP они не требуются.
 
-## Team
+## Ограничения
 
-| Member | Built |
-|---|---|
-| | |
+- ТЗ, трек и критерии оценки в `docs/TASK.md` не заполнены; соответствие требованиям задачи пока оценить нельзя.
+- Прикладной backend, frontend, основной продуктовый сценарий и AI-обработка отсутствуют.
+- Стартовая страница — явная заглушка инфраструктуры; фраза `pipeline works` в ней сама по себе не подтверждает работу деплоя или приложения.
+- Нет моделей данных, валидации пользовательского ввода, загрузки файлов и обработки ошибок внешних API.
+- Smoke-проверка охватывает только два HTTP-запроса. Успешный результат не подтверждает работу будущего продукта или сохранение данных в MongoDB.
+- Теги контейнерных образов не закреплены по digest; `caddy:2-alpine` также не фиксирует minor-версию.
+
+## Развёрнутая версия
+
+В [AGENTS.md](AGENTS.md) указан адрес VM: [демонстрационная версия](https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com). Там же описано автоматическое обновление после push в `main`.
+
+Доступность адреса и состояние удалённого деплоя этой документацией не подтверждаются: скрипта развёртывания VM в репозитории нет. Локальный запуск остаётся самостоятельным способом проверки.
+
+## Доступ для жюри
+
+Для запуска текущей заготовки не нужны аккаунты команды, платные подписки или API-ключи. Нужны доступ к репозиторию и возможность скачать контейнерные образы. Доступ к будущим AI-функциям пока не настроен, поскольку сами функции отсутствуют.
+
+## Надёжность и безопасность
+
+Оба сервиса имеют healthcheck и политику перезапуска `unless-stopped`. Наружу публикуются только порты Caddy. MongoDB не имеет опубликованного порта; аутентификация базы в текущем Compose не настроена. Проверка `/health` — статический ответ Caddy, она не проверяет MongoDB.
+
+Файлы `.env`, `.env.*` (кроме `.env.example`), `*.pem` и `*.key` исключены через `.gitignore`. Реализации защиты прикладного API пока нет, поскольку API отсутствует.
+
+## Сторонние и заранее подготовленные материалы
+
+- Подготовленный до мероприятия шаблон окружения обозначен в истории Git коммитом `a6d411c` (`chore: development environment template (prepared before the event)`). В него входят инструкции агентов, Compose, Caddyfile, шаблоны документации и скрипты проверки.
+- Сторонние компоненты текущего окружения: Docker/Compose, Caddy, MongoDB, curl и их контейнерные образы. Файлы лицензий этих компонентов в репозиторий не включены; условия поставки определяются соответствующими компонентами и образами.
+- Внешние модели, датасеты и прикладные библиотеки не добавлены.
+- В репозитории есть инструкции для OpenAI Codex и Claude Code. Эта редакция документации подготовлена с помощью OpenAI Codex.
+
+## Команда
+
+Название команды — Optimus (из имени репозитория). Состав команды и распределение продуктовых задач в текущих файлах не зафиксированы. Авторство изменений доступно в истории Git.
