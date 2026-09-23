@@ -1,7 +1,6 @@
 <script setup>
 import { ref } from "vue";
 import BrandMark from "./BrandMark.vue";
-import HealthStatus from "./HealthStatus.vue";
 import Icon from "./Icon.vue";
 
 defineProps({ health: { type: Object, required: true } });
@@ -79,7 +78,6 @@ async function submit() {
 
       <div class="auth-hero-foot">
         <span>Выводы носят рекомендательный характер</span>
-        <HealthStatus :health="health" />
       </div>
     </section>
 
@@ -187,8 +185,6 @@ async function submit() {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap;
   font-size: 13px; color: var(--muted); padding-top: var(--sp-4); border-top: 1px solid var(--panel-line);
 }
-.auth-hero-foot :deep(.health) { background: var(--chip); border-color: var(--panel-line); color: var(--muted); }
-
 .auth-side { display: grid; align-content: start; }
 .card.auth-card {
   width: 100%; max-width: none; padding: var(--sp-6);
