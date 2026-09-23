@@ -106,11 +106,6 @@ export const RegulatoryResponse = z.object({
     .max(100),
 });
 
-// report.md
-export const ReportResponse = z.object({
-  conclusion_md: z.string().trim().min(50).max(20_000),
-});
-
 // What leaves the API (docs/TASK.md §6). Validated before the final write.
 export const Citation = z.object({
   doc_id: z.string(),

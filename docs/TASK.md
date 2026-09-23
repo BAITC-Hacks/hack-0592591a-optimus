@@ -168,6 +168,8 @@ The generic-vs-specific case in ред. 9 («Директоры департам
 
 Проверка M4: одинаковые номера и номера вида родитель/подпункт в разных документах не подавляют поиск дублирования. Ссылки заключения различают `doc_id`; цитата проверяется по документу, стороне и пункту с сохранением пунктуации.
 
+M5 acceptance: the report is rendered from verified findings and unit source clauses, with every finding included (no 60-item prompt cutoff). No freeform report LLM call, invented factual prose or uncited unit explanation is retained. Missing source evidence fails as `report_unverified`. Recommendations are review actions attached to finding IDs.
+
 ## 6. Data (Mongo `analyses`, one document per run)
 
 ```json

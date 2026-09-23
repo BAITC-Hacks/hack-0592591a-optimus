@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { compareFunctions, matchFunctions, verifyFindings, clauseIndexOf } from "../src/pipeline/compare.js";
-import { refOf, stripUnknownRefs, writeConclusion } from "../src/pipeline/report.js";
+import { refOf } from "../src/pipeline/report.js";
 import { diffUnits, unitCandidates } from "../src/pipeline/structure.js";
 import { expandOwners, isCandidate, sectionsOf } from "../src/pipeline/extract.js";
 import { jaccard, normalize, quoteOf, tokens } from "../src/pipeline/util.js";
@@ -45,7 +45,6 @@ function stubLlm({ judge = [], conflict = [], duplicates = [], vectors = null } 
       if (name.startsWith("judge")) return schema.parse({ results: judge });
       if (name.startsWith("dupjudge")) return schema.parse({ results: duplicates });
       if (name.startsWith("conflict")) return schema.parse({ reviews: conflict });
-      if (name.startsWith("report")) return schema.parse({ conclusion_md: "## Итоги\n\nСм. [до · before_1 · п. 5.6.2] и [после · after_1 · п. 9.9] и [до · before_1 · п. 1.1].\n\nЕщё текст для минимальной длины ответа модели." });
       throw new Error(`unexpected llm call ${name}`);
     },
     async embed(texts) {
@@ -229,20 +228,6 @@ test("verify drops a finding whose quote is not in its clause", () => {
   const result = verifyFindings([good, tampered, unknown], index);
   assert.deepEqual(result.findings.map((f) => f.finding_id), ["f_001"]);
   assert.equal(result.dropped, 2);
-});
-
-test("report keeps only references that cite a finding and appends the disclaimer", async () => {
-  const { text, stripped } = stripUnknownRefs("A [до · before_1 · п. 5.6.2] B [после · after_1 · п. 9.9] C", new Set(["[до · before_1 · п. 5.6.2]"]));
-  assert.equal(text, "A [до · before_1 · п. 5.6.2] B  C");
-  assert.equal(stripped, 1);
-  const findings = [{ type: "POTENTIAL_LOSS", severity: "high", units: ["ДККМ"], title: "t", explanation: "e", review: null, citations: [{ doc_id: "before_1", side: "before", clause_id: "5.6.2", ref: "п. 5.6.2", quote: "q" }] }];
-  const out = await writeConclusion({ findings, units: [], unit_changes: [], stats: {}, llm: stubLlm(), documents: [{ doc_id: "before_1", filename: "audit.pdf" }, { doc_id: "after_1", filename: "[updated].pdf" }] });
-  assert.ok(out.conclusion_md.includes("[до · before_1 · п. 5.6.2]"));
-  assert.ok(!out.conclusion_md.includes("9.9") && !out.conclusion_md.includes("1.1"));
-  assert.ok(out.conclusion_md.trim().endsWith("_Выводы носят рекомендательный характер и требуют проверки ответственным сотрудником._"));
-  assert.equal(out.stats.refs_stripped, 2);
-  assert.ok(out.conclusion_md.includes("before_1: audit.pdf"));
-  assert.ok(out.conclusion_md.includes("after_1: \\[updated\\].pdf"));
 });
 
 test("structure: regex candidates and the diff by abbreviation", () => {
