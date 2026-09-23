@@ -115,10 +115,10 @@ test("no norms, failures and the conclusion section never break the analysis", a
   assert.equal(failed.stats.regulatory_status, "failed");
 
   const md = `## Итоги\n\nТекст.\n\n---\n\n_${DISCLAIMER}_\n`;
-  const conflict = { type: "POTENTIAL_REGULATORY_CONFLICT", title: "Функция: возможно расходится со Статья 61", citations: [{ clause_id: "3.3" }], norm: { redaction_date: "2026-08-13" } };
+  const conflict = { type: "POTENTIAL_REGULATORY_CONFLICT", title: "Функция: возможно расходится со Статья 61", citations: [{ doc_id: "after_1", clause_id: "3.3" }], norm: { redaction_date: "2026-08-13" } };
   const out = withRegulatorySection(md, { findings: [conflict], stats: { regulatory_status: "ok", regulatory_judged: 2, regulatory_basis: 1 } });
   assert.ok(out.indexOf("## Сверка с законодательством") < out.indexOf(DISCLAIMER), "section sits above the disclaimer");
-  assert.match(out, /\[после · п\. 3\.3\].*ред\. от 13\.08\.2026/);
+  assert.match(out, /\[после · after_1 · п\. 3\.3\].*ред\. от 13\.08\.2026/);
   assert.equal(withRegulatorySection(md, { findings: [], stats: { regulatory_status: "no_norms" } }), md);
 });
 

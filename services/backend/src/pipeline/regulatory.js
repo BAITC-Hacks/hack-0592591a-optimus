@@ -258,7 +258,7 @@ export function withRegulatorySection(conclusionMd, { findings, stats }) {
   ];
   for (const f of conflicts.slice(0, 5)) {
     const edition = f.norm.redaction_date ? `, ред. от ${ruDate(f.norm.redaction_date)}` : "";
-    lines.push("", `- ${f.citations[0] ? `[после · п. ${f.citations[0].clause_id}] ` : ""}${f.title}${edition}.`);
+    lines.push("", `- ${f.citations[0] ? `[после · ${f.citations[0].doc_id} · п. ${f.citations[0].clause_id}] ` : ""}${f.title}${edition}.`);
   }
   const section = lines.join("\n");
   const tail = `\n\n---\n\n_${DISCLAIMER}_`;

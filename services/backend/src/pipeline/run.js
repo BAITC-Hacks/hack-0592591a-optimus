@@ -137,7 +137,7 @@ export async function runPipeline(id, files, deps = {}) {
       ...regulatory.stats,
       extract_chunks: extracted.reduce((n, r) => n + r.stats.chunks, 0),
     };
-    const report = await writeConclusion({ findings: compared.findings, units: structure.units, unit_changes: structure.unit_changes, stats, llm });
+    const report = await writeConclusion({ findings: compared.findings, units: structure.units, unit_changes: structure.unit_changes, stats, llm, documents });
     report.conclusion_md = withRegulatorySection(report.conclusion_md, regulatory);
     const finalStats = {
       ...stats,

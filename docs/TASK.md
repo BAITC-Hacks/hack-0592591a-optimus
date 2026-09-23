@@ -166,6 +166,8 @@ Categories (closed list): `perform_audit, quality_control, plan, report, method,
 
 The generic-vs-specific case in ред. 9 («Директоры департаментов» §5.3 vs «Директор ДНМ» §5.4) is an OVERLAP, not a duplication: §5.3 owners expand to every department, so one owner set contains the other. A removed unit is **not** a lost function: after step 3 its functions normally come back as MOVED to the successors (ред. 8 §5.3.x → ред. 9 §5.3.x).
 
+Проверка M4: одинаковые номера и номера вида родитель/подпункт в разных документах не подавляют поиск дублирования. Ссылки заключения различают `doc_id`; цитата проверяется по документу, стороне и пункту с сохранением пунктуации.
+
 ## 6. Data (Mongo `analyses`, one document per run)
 
 ```json

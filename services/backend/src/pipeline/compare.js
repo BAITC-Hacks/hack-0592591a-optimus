@@ -226,7 +226,7 @@ export async function detectFindings({ before, after, matches, units, vectors, l
     for (let j = i + 1; j < after.length; j++) {
       const a = after[i];
       const b = after[j];
-      if (a.clause_id === b.clause_id || isAncestor(a.clause_id, b.clause_id) || isAncestor(b.clause_id, a.clause_id)) continue;
+      if (a.doc_id === b.doc_id && (a.clause_id === b.clause_id || isAncestor(a.clause_id, b.clause_id) || isAncestor(b.clause_id, a.clause_id))) continue;
       if (!a.owners.length && !b.owners.length) continue;
       const lexical = jaccard(afterTokens[i], afterTokens[j]);
       const semantic = vectors?.after ? cosine(vectors.after[i], vectors.after[j]) : 0;
@@ -379,8 +379,8 @@ export function verifyFindings(findings, clauseIndex) {
       finding.citations.length > 0 &&
       finding.citations.every((c) => {
         const clause = clauseIndex.get(`${c.doc_id}:${c.clause_id}`);
-        const quote = normalize(c.quote);
-        return Boolean(clause) && quote.length > 0 && normalize(clause.text).includes(quote);
+        const quote = String(c.quote ?? "").replace(/\s+/g, " ").trim();
+        return Boolean(clause) && c.side === clause.side && quote.length > 0 && clause.text.replace(/\s+/g, " ").includes(quote);
       });
     if (ok) kept.push(finding);
     else dropped++;
@@ -388,7 +388,7 @@ export function verifyFindings(findings, clauseIndex) {
   return { findings: kept, dropped };
 }
 
-export const clauseIndexOf = (docs) => new Map(docs.flatMap((d) => d.clauses.map((c) => [`${d.doc_id}:${c.clause_id}`, c])));
+export const clauseIndexOf = (docs) => new Map(docs.flatMap((d) => d.clauses.map((c) => [`${d.doc_id}:${c.clause_id}`, { ...c, doc_id: d.doc_id, side: d.side }])));
 
 /** Whole stage: match → detect → verify. */
 export async function compareFunctions({ before, after, units, docs, llm }) {

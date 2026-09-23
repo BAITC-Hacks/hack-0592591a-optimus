@@ -7,18 +7,18 @@ import { ReportResponse } from "../schemas.js";
 import { FINDING_LABELS } from "./compare.js";
 
 export const DISCLAIMER = "Выводы носят рекомендательный характер и требуют проверки ответственным сотрудником.";
-const REF = /\[(до|после) · п\. ([^\]]+)\]/g;
+const REF = /\[(?:до|после) · [^\]]+\]/g;
 const MAX_FINDINGS_IN_PROMPT = 60;
 
 const sideRu = (side) => (side === "before" ? "до" : "после");
 
-export const refOf = (citation) => `[${sideRu(citation.side)} · п. ${citation.clause_id}]`;
+export const refOf = (citation) => `[${sideRu(citation.side)} · ${citation.doc_id} · п. ${citation.clause_id}]`;
 
 /** Removes references that are not in `allowed`; returns the text and how many were stripped. */
 export function stripUnknownRefs(markdown, allowed) {
   let stripped = 0;
-  const text = markdown.replace(REF, (match, side, clause) => {
-    if (allowed.has(`[${side} · п. ${clause.trim()}]`)) return match;
+  const text = markdown.replace(REF, (match) => {
+    if (allowed.has(match)) return match;
     stripped++;
     return "";
   });
@@ -55,7 +55,7 @@ function fallbackConclusion({ findings, units, unit_changes }) {
 /**
  * @returns {Promise<{conclusion_md: string, stats: object}>}
  */
-export async function writeConclusion({ findings, units, unit_changes, stats, llm }) {
+export async function writeConclusion({ findings, units, unit_changes, stats, llm, documents = [] }) {
   const allowed = new Set(findings.flatMap((f) => f.citations.map(refOf)));
   const unitById = new Map(units.map((u) => [u.unit_id, u]));
   const unitLabel = (id) => {
@@ -99,8 +99,10 @@ export async function writeConclusion({ findings, units, unit_changes, stats, ll
     conclusion = fallbackConclusion({ findings, units, unit_changes });
     source = "fallback";
   }
+  const names = documents.map(d => `- ${d.doc_id}: ${String(d.filename).replace(/[\\`*_{}\[\]()<>#+!|]/g, "\\$&").replace(/\s+/g, " ")}`);
+  const sources = names.length ? `\n\n## Исходные документы\n\n${names.join("\n")}` : "";
   return {
-    conclusion_md: `${conclusion.trim()}\n\n---\n\n_${DISCLAIMER}_\n`,
+    conclusion_md: `${conclusion.trim()}${sources}\n\n---\n\n_${DISCLAIMER}_\n`,
     stats: { conclusion: source, refs_stripped: stripped },
   };
 }

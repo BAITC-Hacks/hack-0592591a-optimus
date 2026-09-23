@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { compareFunctions, matchFunctions, verifyFindings, clauseIndexOf } from "../src/pipeline/compare.js";
-import { stripUnknownRefs, writeConclusion } from "../src/pipeline/report.js";
+import { refOf, stripUnknownRefs, writeConclusion } from "../src/pipeline/report.js";
 import { diffUnits, unitCandidates } from "../src/pipeline/structure.js";
 import { expandOwners, isCandidate, sectionsOf } from "../src/pipeline/extract.js";
 import { jaccard, normalize, quoteOf, tokens } from "../src/pipeline/util.js";
@@ -45,7 +45,7 @@ function stubLlm({ judge = [], conflict = [], duplicates = [], vectors = null } 
       if (name.startsWith("judge")) return schema.parse({ results: judge });
       if (name.startsWith("dupjudge")) return schema.parse({ results: duplicates });
       if (name.startsWith("conflict")) return schema.parse({ reviews: conflict });
-      if (name.startsWith("report")) return schema.parse({ conclusion_md: "## Итоги\n\nСм. [до · п. 5.6.2] и [после · п. 9.9] и [до · п. 1.1].\n\nЕщё текст для минимальной длины ответа модели." });
+      if (name.startsWith("report")) return schema.parse({ conclusion_md: "## Итоги\n\nСм. [до · before_1 · п. 5.6.2] и [после · after_1 · п. 9.9] и [до · before_1 · п. 1.1].\n\nЕщё текст для минимальной длины ответа модели." });
       throw new Error(`unexpected llm call ${name}`);
     },
     async embed(texts) {
@@ -232,15 +232,17 @@ test("verify drops a finding whose quote is not in its clause", () => {
 });
 
 test("report keeps only references that cite a finding and appends the disclaimer", async () => {
-  const { text, stripped } = stripUnknownRefs("A [до · п. 5.6.2] B [после · п. 9.9] C", new Set(["[до · п. 5.6.2]"]));
-  assert.equal(text, "A [до · п. 5.6.2] B  C");
+  const { text, stripped } = stripUnknownRefs("A [до · before_1 · п. 5.6.2] B [после · after_1 · п. 9.9] C", new Set(["[до · before_1 · п. 5.6.2]"]));
+  assert.equal(text, "A [до · before_1 · п. 5.6.2] B  C");
   assert.equal(stripped, 1);
   const findings = [{ type: "POTENTIAL_LOSS", severity: "high", units: ["ДККМ"], title: "t", explanation: "e", review: null, citations: [{ doc_id: "before_1", side: "before", clause_id: "5.6.2", ref: "п. 5.6.2", quote: "q" }] }];
-  const out = await writeConclusion({ findings, units: [], unit_changes: [], stats: {}, llm: stubLlm() });
-  assert.ok(out.conclusion_md.includes("[до · п. 5.6.2]"));
+  const out = await writeConclusion({ findings, units: [], unit_changes: [], stats: {}, llm: stubLlm(), documents: [{ doc_id: "before_1", filename: "audit.pdf" }, { doc_id: "after_1", filename: "[updated].pdf" }] });
+  assert.ok(out.conclusion_md.includes("[до · before_1 · п. 5.6.2]"));
   assert.ok(!out.conclusion_md.includes("9.9") && !out.conclusion_md.includes("1.1"));
   assert.ok(out.conclusion_md.trim().endsWith("_Выводы носят рекомендательный характер и требуют проверки ответственным сотрудником._"));
   assert.equal(out.stats.refs_stripped, 2);
+  assert.ok(out.conclusion_md.includes("before_1: audit.pdf"));
+  assert.ok(out.conclusion_md.includes("after_1: \\[updated\\].pdf"));
 });
 
 test("structure: regex candidates and the diff by abbreviation", () => {
@@ -270,4 +272,27 @@ test("function candidates include flat points, Excel rows, fragments and attachm
   assert.equal(isCandidate({ clause_id: "Лист!2", text: "123" }), false);
   assert.equal(sectionsOf([{ clause_id: "1", text: "Приложение: обязанности" }, { clause_id: "1.1", text: "Отдел проводит аудит" }]).length, 1);
   assert.equal(sectionsOf([{ clause_id: "fragment:f1", text: "Отдел" }, { clause_id: "fragment:f2", text: "Аудит" }]).length, 1);
+});
+
+
+test("identical numbering and ancestor-like numbering across documents do not suppress duplicates", async () => {
+  for (const number of ["5.1", "5.1.1"]) {
+    const after = [fn("after", "5.1", "Готовит предложения в план работ.", ["ДНМ"], "plan"), fn("after", number, "Готовит предложения в план работ.", ["ДККМ"], "plan")];
+    after[1].doc_id = "after_2";
+    const docs = after.map(f => ({ doc_id: f.doc_id, side: "after", clauses: [{ ...f }] }));
+    const out = await compareFunctions({ before: [], after, units: UNITS, docs, llm: stubLlm() });
+    const finding = out.findings.find(f => f.type === "POTENTIAL_DUPLICATION");
+    assert.ok(finding, number);
+    assert.deepEqual(finding.citations.map(c => c.doc_id), ["after_1", "after_2"]);
+    assert.notEqual(refOf(finding.citations[0]), refOf(finding.citations[1]));
+  }
+});
+
+test("source verification preserves side, case and punctuation, allowing whitespace only", () => {
+  const docs = [{ doc_id: "after_1", side: "after", clauses: [{ clause_id: "1", text: "Отдел: проверять, нельзя согласовывать." }] }];
+  const citation = { doc_id: "after_1", side: "after", clause_id: "1", quote: "проверять,  нельзя согласовывать." };
+  const make = changes => ({ type: "NOTE", citations: [{ ...citation, ...changes }] });
+  const out = verifyFindings([make({}), make({ side: "before" }), make({ quote: "проверять нельзя, согласовывать." }), make({ quote: "ПРОВЕРЯТЬ" })], clauseIndexOf(docs));
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.dropped, 3);
 });
