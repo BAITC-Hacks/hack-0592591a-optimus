@@ -23,7 +23,8 @@ check() { # name, expected-substring, curl args...
 }
 
 echo "Smoke test against $BASE_URL"
-check "backend health"    '"ok"'                    "$BASE_URL/api/health"
+check "backend health"    '"status":"ok"'          "$BASE_URL/api/health"
+check "mongo reachable"   '"db":"ok"'              "$BASE_URL/api/health"
 check "frontend is up"    "Анализ оргструктуры"     "$BASE_URL/"
 check "unknown api route" '"not_found"'             "$BASE_URL/api/does-not-exist"
 

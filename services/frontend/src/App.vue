@@ -7,7 +7,7 @@ onMounted(async () => {
   try {
     const res = await fetch("/api/health");
     const data = await res.json();
-    apiStatus.value = res.ok ? data.status : `ошибка ${res.status}`;
+    apiStatus.value = res.ok ? `${data.status}, БД: ${data.db}` : `ошибка ${res.status}`;
   } catch {
     apiStatus.value = "недоступен";
   }

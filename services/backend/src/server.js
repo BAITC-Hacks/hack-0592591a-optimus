@@ -1,11 +1,18 @@
 import express from "express";
+import { connectDb, pingDb, closeDb } from "./db.js";
 
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
-app.get(["/health", "/api/health"], (_req, res) => {
-  res.json({ status: "ok" });
+// Used by the compose healthcheck and the frontend start page. Reports 503
+// while Mongo is unreachable so the container is not considered healthy.
+app.get(["/health", "/api/health"], async (_req, res) => {
+  const dbOk = await pingDb();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? "ok" : "degraded",
+    db: dbOk ? "ok" : "unavailable",
+  });
 });
 
 app.use((_req, res) => {
@@ -21,4 +28,26 @@ app.use((err, _req, res, _next) => {
 });
 
 const port = Number(process.env.PORT) || 8000;
-app.listen(port, () => console.log(`backend listening on :${port}`));
+
+// Mongo is started first by compose (depends_on: service_healthy). If the
+// connection still fails, exit non-zero and let the restart policy retry.
+try {
+  const db = await connectDb();
+  console.log(`connected to MongoDB, database "${db.databaseName}"`);
+} catch (err) {
+  console.error(`MongoDB connection failed: ${err.message}`);
+  process.exit(1);
+}
+
+const server = app.listen(port, () => console.log(`backend listening on :${port}`));
+
+async function shutdown(signal) {
+  console.log(`${signal} received, shutting down`);
+  server.close(async () => {
+    await closeDb().catch(() => {});
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
