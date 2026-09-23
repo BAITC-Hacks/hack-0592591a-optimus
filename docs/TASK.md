@@ -361,7 +361,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 | K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (parser tests cover Word level/start overrides; sub-items carry `marker`, `clause: null`); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected; pipeline stage 1 `clauses.js` (glued ids, sub-items, page numbers, TOC tail; 450/453 clauses on the demo pair; 5 node tests) | `llm.js`, modules 2–5 with verify, analyses persisted |
 | K3 | 25 | ⚠️ | Russian README with run steps, tested auth commands and extractor response format; bundled control PDFs with provenance and reproducible extraction check; extraction/auth smoke checks; clean-test.sh; `node --test` for clauses on a real extractor fixture; smoke.sh runs the demo analysis (20 checks) | Smoke asserts on §9 findings once stages 2–5 exist; backend tests for compare without a key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |
-| K5 | 10 | ❌ | — (plan only: AGENTS.md §7a, §12a; no O1 code or data in the repo yet) | O1 data + `regulatory.js`, O3 in the report; after K1–K4. O2 not built (§12) |
+| K5 | 10 | ⚠️ | O1 data only: 3 acts in `services/backend/data/regulatory/` (477 pieces, validated, disclosed in the README); not copied into the image, loaded or used yet | `COPY data ./data`, `ensureRegulatoryNorms()`, `regulatory.js`, «Нормативные требования» tab; O3 in the report; after K1–K4. O2 not built (§12) |
 
 ---
 

@@ -53,3 +53,4 @@ Lines up to 15:15 were reconstructed from `git log`. The agent comes from each c
 - 15:55 · Khazretsultan/Claude · done · smoke.sh runs the demo analysis (queued → done, clause 5.6.2 with its source) + 415/422/404 on the analysis API; 20 checks · K3, K1
 - 15:55 · bolatashim/Cursor · start · demo-data frontend flow (spec от владельца): shell с сессиями и степпером, загрузка ДО/ПОСЛЕ, прогресс анализа, review-workspace с вкладками и просмотром документов, отчёт; данные — bundled demo_data.json (мок до готовности пайплайна; пересекается с results-UI kairadio — согласовать интеграцию) · K4 M1–M5 (UI)
 - 15:55 · Khazretsultan/Claude · start · O1 data: `services/backend/data/regulatory/` (3 acts from the adilet corpus) + README dataset disclosure · K5 O1, K3
+- 15:57 · Khazretsultan/Claude · done · O1 data: 3 acts in force from the adilet corpus in `services/backend/data/regulatory/` (477 pieces, validated), disclosed in the README; not loaded yet · K5 O1, K3
