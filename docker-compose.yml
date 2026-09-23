@@ -63,6 +63,13 @@ services:
       DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-demo@example.com}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-demo12345}
       DEMO_USER_NAME: ${DEMO_USER_NAME:-Демо}
+      # LLM access (docs/TASK.md §4). Empty key -> AI routes answer 503 llm_unavailable.
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
     depends_on:
       mongo:
         condition: service_healthy
