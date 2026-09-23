@@ -9,6 +9,7 @@ import { getDb } from "../db.js";
 import { HttpError } from "../httpError.js";
 import { createLlm } from "../llm.js";
 import { AnalysisResult } from "../schemas.js";
+import { assertRelevantDocuments } from "./classify.js";
 import { AnalysisDocumentSchema, extractClauses } from "./clauses.js";
 import { compareFunctions } from "./compare.js";
 import { extractFunctions } from "./extract.js";
@@ -92,6 +93,10 @@ export async function runPipeline(id, files, deps = {}) {
         throw err;
       }
     });
+    // Still the clauses stage: refuse documents that are not about units and
+    // their functions (a manual, a contract) before any structure is inferred.
+    await set({ documents });
+    await assertRelevantDocuments(documents, llm);
     const docs = documents.filter((d) => d.side === "before" || d.side === "after");
     const count = (side) => documents.filter((d) => d.side === side).reduce((sum, d) => sum + d.clauses.length, 0);
     const clauseStats = { clauses_before: count("before"), clauses_after: count("after"), clauses_regulation: count("regulation") };

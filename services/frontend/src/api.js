@@ -39,3 +39,6 @@ export async function pollAnalysis(id, onUpdate, { intervalMs = 2000, signal } =
     await sleep(intervalMs);
   }
 }
+
+/** The signed-in user's runs, newest first (compact rows; open one with getAnalysis). */
+export const listAnalyses = () => request("/api/analyses");

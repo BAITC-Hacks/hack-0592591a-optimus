@@ -67,6 +67,8 @@
   --chip-hover: #DDE7F8;
   --c-ok-bg: #E3F5EC;
   --c-reorg-bg: #E6F3F6;
+  --c-loss-bg: #FBE9E5;
+  --c-dup-bg: #FBF1DC;
   --white: #FFFFFF;
 
   /* Type */

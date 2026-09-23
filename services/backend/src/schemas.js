@@ -174,3 +174,11 @@ export const AnalysisResult = z.looseObject({
   conclusion_md: z.string(),
   stats: z.looseObject({}),
 });
+
+// classify.md: is an uploaded document about an organisation's units and their functions at all?
+export const ClassifyResponse = z.object({
+  relevant: z.boolean(),
+  kind: z.enum(["org_structure", "unit_regulation", "other"]).catch("other"),
+  summary: z.string().max(300).catch(""),
+  reason: z.string().max(400).catch(""),
+});

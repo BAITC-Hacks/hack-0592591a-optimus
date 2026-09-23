@@ -31,8 +31,8 @@ check "unknown api route" '"not_found"'             "$BASE_URL/api/does-not-exis
 # --- document extraction (Word/PDF/Excel -> fragments with sources) ----------
 # A one-page PDF with a text layer, generated here so no binary fixture is needed.
 # The xref table is omitted on purpose: the parser recovers by scanning objects.
-tiny_pdf() {
-  local content='BT /F1 12 Tf 72 720 Td 14 TL (1. Procurement planning.) Tj T* (2. Tenders.) Tj ET'
+text_pdf() { # one page of Helvetica text from a content stream
+  local content="$1"
   printf '%%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n'
   printf '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n'
   printf '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n'
@@ -40,6 +40,9 @@ tiny_pdf() {
   printf '5 0 obj << /Length %d >> stream\n%s\nendstream endobj\n' "${#content}" "$content"
   printf 'trailer << /Root 1 0 R >>\n%%%%EOF\n'
 }
+tiny_pdf() { text_pdf 'BT /F1 12 Tf 72 720 Td 14 TL (1. Procurement planning.) Tj T* (2. Tenders.) Tj ET'; }
+# Numbered like a regulation but about furniture: the model must refuse it.
+manual_pdf() { text_pdf 'BT /F1 12 Tf 72 720 Td 14 TL (Assembly instructions for the bookshelf.) Tj T* (1. Unpack the box and check the parts list.) Tj T* (2. Attach the side panels with the 4 mm screws.) Tj T* (3. Do not overtighten the screws.) Tj T* (4. Place the shelves on the pins.) Tj ET'; }
 CURL_STDIN=(docker run --rm -i --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS --max-time 30)
 check_upload() { # name, expected-substring, filename, content-producing command
   local name="$1" expect="$2" filename="$3"; shift 3
@@ -77,6 +80,7 @@ check "reject wrong password"  '"invalid_credentials"' \
 check "reject invalid signup"  '"validation_error"' \
   -X POST "$BASE_URL/api/auth/signup" "${JSON[@]}" -d '{"name":"","email":"not-an-email","password":"short"}'
 check "me requires session"    '"unauthorized"' "$BASE_URL/api/auth/me"
+check "history requires session" '"unauthorized"' "$BASE_URL/api/analyses"
 # Log in and reuse the httpOnly cookie for /me, both inside one curl container.
 login_then_me="curl -sS --max-time 15 -c /tmp/jar -o /dev/null -X POST -H 'content-type: application/json' \
   -d '{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASS\"}' '$BASE_URL/api/auth/login' \
@@ -148,6 +152,33 @@ print("regulatory", "ok" if s.get("regulatory_status")=="ok" and s.get("regulato
     esac
     grep -q " ok$" <<<"$line"; report "$name" $? "$line"
   done
+
+  # --- input guard and per-user history ---------------------------------------
+  # A signed-in user uploads a furniture manual as both sides: the run must fail
+  # with irrelevant_document naming the file, and GET /api/analyses (the user's
+  # history) must list that run with its error.
+  upload_manual="printf '%s' \"\$PDF\" > /tmp/manual.pdf \
+    && curl -sS --max-time 15 -c /tmp/jar -o /dev/null -X POST -H 'content-type: application/json' \
+       -d '{\"email\":\"$AUTH_EMAIL\",\"password\":\"$AUTH_PASS\"}' '$BASE_URL/api/auth/login' \
+    && curl -sS --max-time 30 -b /tmp/jar -w ' %{http_code}' -F before=@/tmp/manual.pdf -F after=@/tmp/manual.pdf '$BASE_URL/api/analyses' \
+    && echo && sleep 25 && curl -sS --max-time 30 -b /tmp/jar '$BASE_URL/api/analyses'"
+  out="$(docker run --rm --add-host=host.docker.internal:host-gateway -e PDF="$(manual_pdf)" --entrypoint sh curlimages/curl:8.10.1 -c "$upload_manual" 2>&1)"
+  MANUAL_ID="$(grep -oE 'a_[0-9a-f]{12}' <<<"$out" | head -1)"
+  [ -n "$MANUAL_ID" ] && grep -q ' 202$' <<<"$(head -1 <<<"$out")"; report "manual.pdf accepted for checking (202)" $? "$out"
+  status=""
+  for _ in $(seq 1 60); do
+    out2="$("${CURL[@]}" --max-time 30 "$BASE_URL/api/analyses/$MANUAL_ID" 2>&1 || true)"
+    status="$(grep -oE '"status":"[a-z]+"' <<<"${out2:0:400}" | head -1)"
+    case "$status" in *done*|*failed*) break ;; esac
+    sleep 2
+  done
+  grep -q '"code":"irrelevant_document"' <<<"$out2" && grep -q 'manual.pdf' <<<"$out2"
+  report "irrelevant document is refused with irrelevant_document naming the file" $? "$(grep -o '"error":{[^}]*}' <<<"$out2")"
+  history="$(tail -1 <<<"$out")"
+  grep -q "\"_id\":\"$MANUAL_ID\"" <<<"$history" && grep -q '"code":"irrelevant_document"' <<<"$history"
+  report "history lists the signed-in user's run" $? "${history:0:300}"
+  grep -q "\"_id\":\"$ANALYSIS_ID\"" <<<"$history"
+  report "history does not list another user's run" $(( $? == 0 ? 1 : 0 )) "${history:0:300}"
 else
   echo "  skip  demo analysis and control set: LLM not configured (set OPENAI_API_KEY and LLM_MODEL in .env)"
   check "demo analysis without a model answers 503 llm_unavailable" '"llm_unavailable"' -X POST "$BASE_URL/api/analyses/demo"

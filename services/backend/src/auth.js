@@ -98,3 +98,10 @@ export async function requireAuth(req, _res, next) {
     return next(err);
   }
 }
+
+// Like requireAuth, but a missing or stale cookie just leaves req.user unset:
+// for routes that are public yet attach the signed-in user when there is one.
+export function optionalAuth(req, res, next) {
+  if (!readSessionCookie(req)) return next();
+  requireAuth(req, res, (err) => next(err instanceof HttpError && err.status === 401 ? undefined : err));
+}
