@@ -27,6 +27,8 @@ defineProps({ inverse: { type: Boolean, default: false } });
 </template>
 
 <style scoped>
+.brand-mark circle:nth-of-type(1) { fill: var(--accent); }
 .inverse { color: #fff; }
 .inverse .brand-sub { color: rgba(255, 255, 255, 0.8); }
+.inverse .brand-mark circle:nth-of-type(1) { fill: #fff; }
 </style>

@@ -53,10 +53,10 @@ a:hover { text-decoration: underline; }
   box-shadow: 0 1px 0 var(--line), 0 4px 16px rgba(10,60,140,.05);
 }
 .app-header .container { height: 100%; display: flex; align-items: center; gap: var(--sp-8); }
-.brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--kt-blue-700); text-decoration: none !important; }
+.brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--accent); text-decoration: none !important; }
 .brand-mark { width: 38px; height: 38px; }
 .brand-name { font-weight: 900; font-size: 18px; letter-spacing: .02em; line-height: 1; }
-.brand-sub { font-size: 11px; color: var(--kt-blue-600); line-height: 1.2; margin-top: 3px; }
+.brand-sub { font-size: 11px; color: var(--muted); line-height: 1.2; margin-top: 3px; }
 .nav { display: flex; gap: var(--sp-1); flex: 1; }
 .nav a {
   padding: 8px 14px; border-radius: var(--r-sm); color: var(--ink-600);

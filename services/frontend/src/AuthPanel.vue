@@ -160,9 +160,6 @@ async function submit() {
   display: flex; flex-direction: column; justify-content: space-between; gap: var(--sp-10);
   padding: var(--sp-12); min-height: calc(100vh - var(--sp-10) - var(--sp-16));
 }
-.auth-hero :deep(.brand) { color: var(--accent); }
-.auth-hero :deep(.brand-sub) { color: var(--muted); }
-.auth-hero :deep(.brand-mark circle:nth-of-type(1)) { fill: var(--accent); }
 .auth-hero-body { max-width: 560px; }
 .auth-hero .eyebrow { color: var(--muted); }
 .auth-hero h1 {
