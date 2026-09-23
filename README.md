@@ -54,7 +54,7 @@
 - **openai 7** (официальный SDK для OpenAI-совместимых API) — вызовы модели из [llm.js](services/backend/src/llm.js): `chat.completions` в режиме JSON и `embeddings`. Провайдер, модель и адрес задаются переменными окружения. В проверочных запусках использовались **gpt-5.6-terra** и **gpt-5.6-luna** с `LLM_PROVIDER=openai`; любой OpenAI-совместимый провайдер подключается через `LLM_BASE_URL`.
 - **zod 4** — схемы всех ответов модели и итогового документа анализа; **multer 2** — приём multipart; **jsonwebtoken 9** — сессии; пароли — `scrypt` из `node:crypto`.
 - **Python 3.12** (`python:3.12-slim`), **FastAPI**, **uvicorn**, **uv** — сервис извлечения текста: **python-docx** (Word), **pdfplumber** (PDF), **openpyxl** и **xlrd** (Excel), **python-multipart**; **pytest** и **httpx** для тестов.
-- **Vue 3** и **Vite 6** — frontend, статическая сборка; **marked 18** — рендер заключения из Markdown (HTML в тексте экранируется до разбора); обычный CSS с переменными без UI-библиотек; шрифты **Manrope** (заголовки), **Golos Text** (текст), **Lora** (цитаты из документов), а также Nunito Sans и PT Serif экрана входа — пакеты @fontsource в сборке, без внешних CDN.
+- **Vue 3** и **Vite 6** — frontend, статическая сборка; **docx 9** — формирование Word-экспорта; **marked 18** — рендер заключения из Markdown (HTML в тексте экранируется до разбора); обычный CSS с переменными без UI-библиотек; шрифты **Manrope** (заголовки), **Golos Text** (текст), **Lora** (цитаты из документов), а также Nunito Sans и PT Serif экрана входа — пакеты @fontsource в сборке, без внешних CDN.
 - **MongoDB**, образ `mongo:8.0` — коллекции `users` и `analyses`; драйвер `mongodb` 6.21.
 - **Bash**, **curl** (`curlimages/curl:8.10.1`) и **python:3.12-slim** — проверочные скрипты; все запросы и проверка JSON выполняются в контейнерах.
 - **Git** — получение репозитория и проверка чистого клона.
@@ -132,15 +132,12 @@ docker compose logs --tail=100 backend
 ./scripts/smoke.sh --require-analysis
 ```
 
-Ожидаемый результат с настроенной моделью — 36 успешных проверок, итог `passed=36 failed=0`, код завершения `0`:
+Ожидаемый результат с настроенной моделью — `passed=36 failed=0`, код завершения `0`. Проверяются:
 
-- инфраструктура: `backend health`, `mongo reachable`, `frontend is up`, `unknown api route`;
-- извлечение: `extract pdf clauses`, `reject unsupported type`, `reject missing file`;
-- аутентификация: `signup (or already registered)`, `login`, `reject wrong password`, `reject invalid signup`, `me requires session`, `me with session cookie`, `demo account login`;
-- демо-анализ: `demo analysis queued (202)`, `demo analysis done` (ожидание до 12 минут), `demo clause 5.6.2 with its source`;
-- контрольный набор (docs/TASK.md §9): `control set: units ДИТААД and ДОА created`, `control set: a unit reorganized into successors`, `control set: POTENTIAL_LOSS at до п. 5.6.2 with its quote`, `control set: POTENTIAL_DUPLICATION после п. 5.4.3 / 5.5.8`, `control set: POTENTIAL_CONFLICT cites после п. 5.5.2`, `every finding has a verified quote`, `conclusion carries the advisory disclaimer`, `O1: legislation check ran on 477 norms; every finding has both quotes and an adilet link`;
-- отказы API анализа: `analysis rejects unsupported type (415)`, `analysis rejects a missing side (422)`, `unknown analysis id (404)`, `history requires session`;
-- входной фильтр и история (с моделью): инструкция по сборке мебели в PDF принимается на проверку (`202`), запуск завершается `irrelevant_document` с именем файла, `GET /api/analyses` с сессией показывает этот запуск и не показывает чужой.
+- запуск сервисов, извлечение файлов, демо-вход и работа сессии;
+- создание ДИТААД/ДОА, сохранение ДНМ/ДККМ и преемственность направления внутреннего аудита;
+- контрольные потери, дублирование и конфликт; точные документы, стороны и цитаты; согласованность чисел и включение всех находок в заключение;
+- сверка с 477 нормами, неверные файлы и запросы, отклонение нерелевантного документа и изоляция истории пользователей.
 
 Без ключа обычный `./scripts/smoke.sh` проверяет инфраструктуру (19 проверок), явно пропускает AI-анализ и проверяет `503 llm_unavailable`. Строгий `./scripts/smoke.sh --require-analysis` и полный `clean-test.sh` в этой ситуации завершаются с ошибкой. Для чистого запуска без ключа используйте только явно названный режим `--infrastructure-only`. Проверки аутентификации используют синтетический аккаунт `smoke@example.com` / `smoke-pass-123`. При другом порте задайте `WEB_PORT`.
 
@@ -279,8 +276,8 @@ docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlim
 - Подготовленный до мероприятия шаблон окружения обозначен коммитом `a6d411c` (`chore: development environment template (prepared before the event)`): инструкции агентов, Compose, Caddyfile, шаблоны документации и скрипты проверки. Всё прикладное (extractor, конвейер, API, интерфейс) написано 23.09.2026 в этом репозитории.
 - Сторонние компоненты: Docker/Compose, Caddy, MongoDB, curl, python:3.12-slim и их образы.
 - Библиотеки backend: express 5 (MIT), mongodb 6 (Apache-2.0), multer 2 (MIT), jsonwebtoken 9 (MIT), zod 4 (MIT), openai 7 (Apache-2.0).
-- Библиотеки frontend: vue 3, vite 6, marked 18 (MIT); шрифты Manrope, Golos Text, Lora, Nunito Sans и PT Serif из пакетов @fontsource (SIL Open Font License 1.1). Иконки в `src/Icon.vue` нарисованы вручную в стиле Lucide. Логотип OrgScope — условный знак, не логотип Казахтелекома.
-- Библиотеки extractor: FastAPI, uvicorn, python-multipart, python-docx, pdfplumber/pdfminer.six, openpyxl, xlrd, pytest, httpx; полный список — в `services/extractor/uv.lock`.
+- Библиотеки frontend: vue 3, vite 6, marked 18, docx 9 (MIT); шрифты Manrope, Golos Text, Lora, Nunito Sans и PT Serif из пакетов @fontsource (SIL Open Font License 1.1). Иконки в `src/Icon.vue` нарисованы вручную в стиле Lucide. Логотип OrgScope — условный знак, не логотип Казахтелекома.
+- Библиотеки extractor: FastAPI, uvicorn, python-multipart, python-docx, pdfplumber/pdfminer.six, openpyxl, xlrd, pytest, httpx; полный список — в `services/extractor/uv.lock`. Точные версии и транзитивные зависимости всех сервисов зафиксированы в их lock-файлах.
 - Модели в проверках: `gpt-5.6-terra`, `gpt-5.6-luna`; необязательные эмбеддинги — `text-embedding-3-small`, через официальный SDK. Два предоставленных пользователем обезличенных PDF включены без изменений (см. «Данные и интеграции»).
 - Тексты трёх законов РК в `services/backend/data/regulatory/` взяты с adilet.zan.kz (ИПС «Әділет»); подробности и правовой статус — в разделе «Данные и интеграции». Выгрузку сделал заранее подготовленный инструмент команды: корпус НПА, собранный до мероприятия; код этого инструмента в репозиторий не входит.
 - Инструменты: в репозитории есть инструкции для OpenAI Codex, Claude Code и Cursor. Extractor, сборка пунктов, API анализа и smoke-проверка написаны с помощью Claude Code и OpenAI Codex; модуль модели, этапы 2–5 конвейера, тесты сопоставления, экран результатов и эта редакция README — с помощью Claude Code; дизайн-система и экран входа — с помощью Cursor.
