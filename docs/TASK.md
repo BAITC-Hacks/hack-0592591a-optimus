@@ -261,7 +261,7 @@ Backend deps: `mongodb`, `zod`, `multer` are already in `package.json`; add `ope
 | 17:15 | README RU (11 items), reviewer key decided (AGENTS.md §8), scorecard updated. | C |
 | 17:40 | `clean-test.sh` on a second laptop; freeze; final push ≤ 17:50. | all |
 
-Cut list if late, in order: conflict rule → LLM cache → auth on analysis routes (never required). Never cut: demo run, citations, verify.
+Cut list if late: optional O1/O2/O3 work, LLM cache, then auth on analysis routes (never required). Never cut any Must-have M1–M5: unit classification, lost functions, duplicates **and conflicts of interest**, verified citations, and the analytical conclusion. Keep the demo run. Conflict detection is mandatory under the original ТЗ §7.3, not an optional rule; a missing part must be reported as unmet in the scorecard and README, never presented as satisfying M3.
 
 ## 12. Decisions
 
