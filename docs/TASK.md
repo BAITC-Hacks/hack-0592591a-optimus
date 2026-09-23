@@ -117,6 +117,8 @@ Prompts in `src/prompts/{structure,extract,judge,conflict,report}.md`: JSON only
 
 ## 5. Matching and rules (code, unit-tested; the LLM only judges candidates)
 
+Acceptance: a judge timeout, omitted verdict, repeated id or unknown candidate must stop the analysis with `comparison_incomplete`, never produce `POTENTIAL_LOSS` or a clean conclusion. The provider retries before this terminal error; the existing failed-analysis UI lets the user restart. The same completeness rule applies to duplicate review batches.
+
 Matching, per function «до» (`compare.js`):
 
 ```

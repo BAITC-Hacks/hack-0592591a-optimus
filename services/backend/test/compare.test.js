@@ -129,6 +129,27 @@ test("without embeddings the judge sees lexical candidates; none → POTENTIAL_L
   assert.equal(result.stats.dropped_unverified, 0);
 });
 
+test("judge timeout, missing/duplicate verdict and an unknown candidate cannot become a loss", async () => {
+  const before = [fn("before", "5.6.2", "формировать группы контроля качества с привлечением работников БВА в соответствии с ресурсным планом;", ["ДККМ"], "quality_control", "формировать группы контроля качества")];
+  const after = [fn("after", "5.5.2", "организует мониторинг качества работников БВА по плану контроля;", ["ДККМ"], "quality_control", "мониторинг качества аудита")];
+  const timeout = stubLlm();
+  timeout.completeJson = async () => { throw new Error("simulated timeout"); };
+  const verdict = { id: before[0].func_id, candidate_id: null, relation: "none", confidence: 0.9 };
+  for (const llm of [timeout, stubLlm(), stubLlm({ judge: [verdict, verdict] }), stubLlm({ judge: [{ ...verdict, candidate_id: "invented", relation: "same" }] })]) {
+    await assert.rejects(compareFunctions({ before, after, units: UNITS, docs: docsOf(before, after), llm }),
+      (error) => error.code === "comparison_incomplete" && error.status === 502);
+  }
+});
+
+test("failed duplicate review cannot produce an apparently clean comparison", async () => {
+  const after = [
+    fn("after", "1.1", "планирует закупки оборудования для филиалов", ["А"], "plan", "планирование филиалов"),
+    fn("after", "2.1", "планирует закупки оборудования для офиса", ["Б"], "plan", "планирование офиса"),
+  ];
+  await assert.rejects(compareFunctions({ before: [], after, units: [], docs: docsOf([], after), llm: stubLlm() }),
+    (error) => error.code === "comparison_incomplete");
+});
+
 test("generic vs specific owners → OVERLAP, disjoint peers → POTENTIAL_DUPLICATION, never both for one pair", async () => {
   const text = "запрашивает у Руководителей Общества информацию, необходимую для осуществления функций БВА;";
   const after = [

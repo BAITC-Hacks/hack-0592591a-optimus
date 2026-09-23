@@ -3,6 +3,7 @@
 // LLM only judges candidate pairs (judge.md) and reviews conflict candidates
 // (conflict.md). Unit-tested with a stubbed llm in test/compare.test.js.
 import { prompt } from "../prompts.js";
+import { HttpError } from "../httpError.js";
 import { ConflictResponse, DupJudgeResponse, JudgeResponse } from "../schemas.js";
 import { cosine, disjoint, isAncestor, isSubset, jaccard, mapLimit, normalize, quoteOf, sameSet, tokens } from "./util.js";
 
@@ -130,17 +131,27 @@ export async function matchFunctions({ before, after, llm }) {
     try {
       const response = await llm.completeJson({
         name: `judge:${b + 1}/${batches.length}`,
-        schema: JudgeResponse,
+        schema: JudgeResponse.refine((answer) => answer.results.length === batch.length && batch.every((item) => {
+          const rows = answer.results.filter((r) => r.id === before[item.index].func_id);
+          return rows.length === 1 && (rows[0].relation === "none"
+            ? rows[0].candidate_id === null
+            : item.candidates.some((c) => after[c.j].func_id === rows[0].candidate_id));
+        }), "Return one verdict per input id, using only its candidates; none requires candidate_id=null"),
         prompt: prompt("judge", { items: JSON.stringify(payload, null, 1) }),
       });
       results = new Map(response.results.map((r) => [r.id, r]));
     } catch (err) {
-      console.warn(`[compare] judge batch ${b + 1} failed (${err.message}); its functions count as unmatched`);
+      // The provider already retries network failures and invalid responses.
+      // An unavailable assessment is not evidence of an absent obligation.
+      throw new HttpError(502, "comparison_incomplete", "Не удалось оценить все функции. Анализ не завершён; потери не определены. Повторите анализ.");
     }
     for (const item of batch) {
       const fn = before[item.index];
       const verdict = results.get(fn.func_id);
       const allowed = new Set(item.candidates.map((c) => after[c.j].func_id));
+      if (!verdict || (verdict.relation !== "none" && !allowed.has(verdict.candidate_id))) {
+        throw new HttpError(502, "comparison_incomplete", "Модель не оценила все функции. Повторите анализ.");
+      }
       const accepted = verdict && verdict.relation !== "none" && verdict.candidate_id && allowed.has(verdict.candidate_id) && verdict.confidence >= JUDGE_MIN[verdict.relation];
       if (accepted) {
         const chosen = item.candidates.find((c) => after[c.j].func_id === verdict.candidate_id);
@@ -244,7 +255,8 @@ export async function detectFindings({ before, after, matches, units, vectors, l
     try {
       const response = await llm.completeJson({
         name: `dupjudge:${b + 1}/${reviewBatches.length}`,
-        schema: DupJudgeResponse,
+        schema: DupJudgeResponse.refine((answer) => answer.results.length === batch.length && batch.every((_, k) =>
+          answer.results.filter((r) => r.pair_id === k + 1).length === 1), "Return exactly one verdict for every pair_id"),
         prompt: prompt("dupjudge", {
           pairs: JSON.stringify(
             batch.map((p, k) => ({ pair_id: k + 1, a: { clause_id: p.a.clause_id, owners: p.a.owners, text: textOf(p.a) }, b: { clause_id: p.b.clause_id, owners: p.b.owners, text: textOf(p.b) } })),
@@ -258,7 +270,7 @@ export async function detectFindings({ before, after, matches, units, vectors, l
         if (pair && r.relation !== "none" && r.confidence >= 0.6) pair.basis = r.relation;
       }
     } catch (err) {
-      console.warn(`[compare] duplicate review batch ${b + 1} failed (${err.message}); those pairs are not reported`);
+      throw new HttpError(502, "comparison_incomplete", "Не удалось проверить дублирование функций. Анализ не завершён. Повторите анализ.");
     }
   });
   for (const { a, b, lexical, basis } of pairs) {
