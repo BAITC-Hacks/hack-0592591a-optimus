@@ -178,7 +178,7 @@ docker compose run --rm --no-deps extractor pytest -q       # extractor: авт�
 ./scripts/clean-test.sh --infrastructure-only                    # то же без ключа: 19 проверок; последняя строка «>> Infrastructure-only check passed; main AI scenario was NOT verified»
 ```
 
-Ожидаемый итог: backend — `# fail 0`; extractor — `passed`; smoke без ключа — `passed=19 failed=0`; с ключом и `--require-analysis` — `passed=36 failed=0`. Проверено в Docker 23.09.2026: smoke без ключа 19/19, extractor 28 passed, backend 47/47 (на коммите `b49f795`; позже в `main` добавлены тесты сборки пунктов и сопоставления).
+Ожидаемый итог: backend — `# fail 0`; extractor — `passed`; smoke без ключа — `passed=19 failed=0`; с ключом и `--require-analysis` — `passed=36 failed=0`. Проверено в Docker 23.09.2026: smoke без ключа 19/19, extractor 28 passed, backend 49/49.
 
 `reviewer.env` — копия `.env.example` с заполненными `OPENAI_API_KEY`, `LLM_MODEL` и, при желании, `EMBEDDING_MODEL`; Compose читает файл как данные, в репозиторий он не попадает.
 
