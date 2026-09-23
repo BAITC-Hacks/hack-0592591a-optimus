@@ -12,7 +12,7 @@ import ProgressBar from "./components/ProgressBar.vue";
 import RegulatoryTab from "./components/RegulatoryTab.vue";
 import UploadPanel from "./components/UploadPanel.vue";
 import SummaryView from "./results/SummaryView.vue";
-import UnitPage from "./results/UnitPage.vue";
+import StructureView from "./results/StructureView.vue";
 import { listAnalyses, pollAnalysis, startAnalysis, startDemo } from "./api.js";
 import { downloadDocx } from "./export.js";
 import { SIDE } from "./domain.js";
@@ -379,7 +379,7 @@ onUnmounted(stopClock);
           @show-dups="screen = 'dups'"
           @download="downloadConclusion"
         />
-        <UnitPage v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" />
+        <StructureView v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" @show-losses="screen = 'losses'" />
         <section v-else-if="screen === 'losses'" class="screen">
           <div class="screen-head">
             <div><h2>Потеря функций</h2><p class="sub">Каждая функция из действующих положений сверена с новыми. Не найденные — вверху; строка раскрывается в цитаты «было» и «стало».</p></div>
