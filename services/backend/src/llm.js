@@ -17,7 +17,7 @@ const BASE_URL = process.env.LLM_BASE_URL || (PROVIDER === "nvidia" ? "https://i
 
 const TIMEOUT_MS = 90_000;
 const RETRIES = 2; // network failures, 429 and 5xx only
-const CONCURRENCY = 6;
+const CONCURRENCY = 12; // key allows 5000 RPM / 2M TPM; 12 lets both documents' extract chunks run at once
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 const EMBED_BATCH = 100;
 
