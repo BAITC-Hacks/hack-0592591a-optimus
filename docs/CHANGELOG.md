@@ -48,3 +48,4 @@ Lines up to 15:15 were reconstructed from `git log`. The agent comes from each c
 - 15:17 · Khazretsultan/Claude · done · spec: O1 today on a parallel track (§12a), O2 dropped; AGENTS.md §7a fixes; this changelog · K5 O1, K3
 - 15:19 · Khazretsultan/Claude · start · `pipeline/clauses.js` (+ `test/clauses.test.js`), `routes/analyses.js` (POST /api/analyses with before/after/regulations, /demo, GET /:id; 415/413/422 before 202), smoke demo run · K1 M1 M4, K3
 - 15:31 · Khazretsultan/Claude · done · pipeline stage 1 `clauses.js`: fragments → clauses (glued ids, sub-items `5.3.2.а`, page numbers, TOC tail); `node --test` in the backend image · K1 M4, K3
+- 15:23 · kairadio/Claude · start · `src/llm.js`, `src/schemas.js`, `src/prompts/*.md`, `pipeline/{structure,extract,compare,report}.js` + `pipeline/run.js` (runner the analyses route calls), `test/compare.test.js`; then the results UI in `services/frontend` (upload → progress → tabs) · K1 M1–M5, K2, K4
