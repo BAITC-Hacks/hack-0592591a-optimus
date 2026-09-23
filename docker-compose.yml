@@ -1,0 +1,48 @@
+# The whole system. ONE file, ONE version, used unchanged by developers, the VM
+# and the judges:
+#   cp .env.example .env && docker compose up --build
+# Environments differ only by .env values (ports, SITE_ADDRESS, keys).
+name: hackalem
+
+services:
+  # Single public entrypoint. SITE_ADDRESS=":80" serves plain HTTP (local, judges).
+  # A real hostname (the VM) makes Caddy obtain a Let's Encrypt certificate.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+      - "${HTTPS_PORT:-3443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  # Application services go here once the stack is chosen (AGENTS.md §5, §6):
+  # services/<name>/ with its own Dockerfile, a healthcheck, depends_on mongo
+  # (condition: service_healthy), a develop.watch rebuild block, and a route
+  # in ./Caddyfile. Only caddy publishes host ports.
+
+volumes:
+  mongo-data:
+  caddy-data:
+  caddy-config:

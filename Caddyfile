@@ -1,0 +1,15 @@
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# PLACEHOLDER until real services exist. Then replace the two `respond`
+	# lines with routes, API first:
+	#
+	#   handle /api/* {
+	#       reverse_proxy api:8000
+	#   }
+	#   handle {
+	#       reverse_proxy web:80
+	#   }
+	respond /health "ok" 200
+	respond "HackAlem AI: pipeline works. The application replaces this page." 200
+}
