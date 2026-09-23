@@ -46,3 +46,4 @@ Lines up to 15:15 were reconstructed from `git log`. The agent comes from each c
 - 15:03 · kairadio/Claude · done · `EMBEDDING_MODEL` in `.env.example` · K2 · d52c905
 - 15:15 · kairadio/Claude · done · compose passes LLM and embedding env vars to the backend · K2 · a4c4cba
 - 15:17 · Khazretsultan/Claude · done · spec: O1 today on a parallel track (§12a), O2 dropped; AGENTS.md §7a fixes; this changelog · K5 O1, K3
+- 15:19 · Khazretsultan/Claude · start · `pipeline/clauses.js` (+ `test/clauses.test.js`), `routes/analyses.js` (POST /api/analyses with before/after/regulations, /demo, GET /:id; 415/413/422 before 202), smoke demo run · K1 M1 M4, K3
