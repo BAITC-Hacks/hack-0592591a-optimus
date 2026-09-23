@@ -2,213 +2,159 @@
 
 ## Краткое описание
 
-Сейчас репозиторий содержит инфраструктурную заготовку команды Optimus для HackAlem AI: запуск контейнеров, HTTP-точку входа, MongoDB и скрипты проверки. Она предназначена для подготовки окружения команды и проверки запуска жюри.
+ИИ-агент для сотрудника, который анализирует организационные изменения. Он принимает комплекты документов «до» и «после» реорганизации (положения о подразделениях, приказы, оргструктуры в Word, PDF или Excel), определяет, какие подразделения созданы, сохранены, реорганизованы или упразднены, сопоставляет их функции, находит возможную потерю функций, дублирование, пересечения зон ответственности и признаки конфликта независимости, и формирует аналитическое заключение. Каждый вывод ссылается на документ и пункт и содержит дословную цитату, проверенную кодом. Задача и критерии — в [docs/TASK.md](docs/TASK.md) (задача 1, владелец — Казахтелеком).
 
-Задача из [docs/TASK.md](docs/TASK.md) — сравнение организационной структуры и функций подразделений до и после реорганизации для сотрудников, анализирующих организационные изменения. Пока реализованы каркас приложения и извлечение текста из документов Word, PDF и Excel со ссылками на источник; сравнение и анализ ещё отсутствуют.
+Выводы носят рекомендательный характер и требуют проверки ответственным сотрудником; интерфейс и заключение говорят об этом явно.
 
 ## Что реализовано
 
 - Единый [docker-compose.yml](docker-compose.yml) с сервисами Caddy, backend, extractor, frontend и MongoDB, проверками состояния и постоянными томами.
-- **Backend** ([services/backend](services/backend)): Node.js + Express. При старте подключается к MongoDB (драйвер `mongodb`), завершает работу с ошибкой, если база недоступна. Маршрут `GET /api/health` выполняет `ping` базы и возвращает `{"status":"ok","db":"ok"}` (или `503` и `{"status":"degraded","db":"unavailable"}`). Маршруты `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout` и `GET /api/auth/me` ([routes/auth.js](services/backend/src/routes/auth.js)) — регистрация и вход по email и паролю: тела запросов проверяются zod-схемами, пароль хешируется `scrypt`, пользователь сохраняется в коллекции `users`, сессия — JWT в httpOnly-cookie `hackalem_session` на 7 дней. Маршрут `POST /api/documents/extract` принимает один документ (multipart, поле `file`, до `MAX_UPLOAD_MB` МБ), передаёт его в extractor и возвращает фрагменты со ссылками на источник (формат ответа — в разделе «Как проверить решение»). Модуль [extractorClient.js](services/backend/src/extractorClient.js) — единственная точка обращения к extractor, с таймаутом 60 с и двумя повторами при недоступности сервиса; неизвестные маршруты `/api/*` возвращают JSON-ошибку `404` в формате `{"error":{"code","message"}}`.
-- **Этап 1 конвейера** ([services/backend/src/pipeline/clauses.js](services/backend/src/pipeline/clauses.js)): группирует фрагменты extractor в пункты `{doc_id, side, clause_id, parent_id, text, fragment_ids, ref}`. Подпункты получают номер вида `5.3.2.а`, склеенные в одной строке номера (`3.10.Работники…`) разделяются, только если продолжают нумерацию; номера страниц и хвост «Оглавление»/«Содержание» отбрасываются. На демо-паре: 450 пунктов в ред. 8 и 453 в ред. 9, все пункты контрольного набора (3.4, 5.3, 5.3.5, 5.5.2, 5.6.2, 5.6.3, 5.7.2) присутствуют со ссылками вида «п. 5.6.2, стр. 10, строки 11–12». Остальные этапы (подразделения, функции, сравнение, заключение) не реализованы.
-- **API анализа** ([services/backend/src/routes/analyses.js](services/backend/src/routes/analyses.js)), без входа в аккаунт: `POST /api/analyses` принимает multipart-поля `before` и `after` (обязательные) и `regulations` (необязательное), до 10 файлов в поле, до `MAX_UPLOAD_MB` МБ каждый. Тип файла проверяется по содержимому до постановки в очередь: `415 unsupported_format`, `413 file_too_large`, `422 missing_side`, `400 empty_file`. Ответ — `202 {"analysis_id"}`. `POST /api/analyses/demo` запускает то же на встроенной демо-паре. `GET /api/analyses/:id` возвращает документ анализа из MongoDB (`status`: `queued` → `running` → `done`/`failed`, `stage`, `documents[]` с пунктами, `stats`). Поле `pipeline` явно перечисляет выполненные (`implemented: ["clauses"]`) и ещё не реализованные этапы, чтобы пустой результат не выглядел как «отклонений нет». Неизвестный или некорректный id — `404`.
-- **Extractor** ([services/extractor](services/extractor)): внутренний сервис на Python + FastAPI. `POST /extract` принимает файл Word (`.docx`), PDF с текстовым слоем или Excel (`.xlsx`, `.xlsm`, `.xls`) и возвращает упорядоченный список фрагментов. У каждого фрагмента есть текст, номер пункта, раздел, точное место в файле и готовая ссылка на источник: для Word — абзац или строка таблицы с восстановленной автонумерацией Word, для PDF — страница и строки, для Excel — лист, строка и диапазон ячеек. Формат определяется по содержимому файла, а не по расширению. Наружу сервис не опубликован, Caddy его не проксирует.
-- **Frontend** ([services/frontend](services/frontend)): Vue 3 + Vite, собирается в статические файлы и раздаётся контейнером Caddy. Стартовая страница показывает статус API и базы данных, экран входа и регистрации ([AuthPanel.vue](services/frontend/src/AuthPanel.vue)), а после входа — шапку с именем пользователя, кнопку «Выйти» и заглушку будущего экрана загрузки. Оформление следует дизайн-системе в фирменных цветах Казахтелекома ([services/frontend/DESIGN_SYSTEM.md](services/frontend/DESIGN_SYSTEM.md)): токены и общие компоненты в `src/styles/`, иконки в `src/Icon.vue`.
-- Демо-аккаунт для жюри (`demo@example.com` / `demo12345`) создаётся автоматически при старте backend, если его ещё нет ([seed.js](services/backend/src/seed.js)); данные берутся из `DEMO_USER_*`.
-- Настройки адреса сайта и опубликованных портов через переменные окружения.
-- [scripts/smoke.sh](scripts/smoke.sh): двадцать HTTP-проверок — статус API и доступность MongoDB через `/api/health`, главная страница, ошибка для неизвестного маршрута API, извлечение пунктов из PDF и два отказа на неверный ввод, регистрация, вход, `/api/auth/me` с cookie сессии и три отказа аутентификации (неверный пароль, неверные данные регистрации, запрос без сессии), вход демо-аккаунтом, демо-анализ (постановка в очередь, завершение, пункт 5.6.2 со ссылкой на источник) и три отказа API анализа (неподдерживаемый тип, нет одной из сторон, неизвестный id).
-- [scripts/clean-test.sh](scripts/clean-test.sh): проверка закоммиченного состояния в отдельном локальном клоне с настройками из `.env.example`.
-
-Извлечение текста из документов через API, регистрация и вход пользователей работают. Интерфейса загрузки, сравнения комплектов «до/после», анализа оргструктуры и AI-функций пока нет.
+- **Extractor** ([services/extractor](services/extractor)): внутренний сервис на Python + FastAPI. `POST /extract` принимает файл Word (`.docx`), PDF с текстовым слоем или Excel (`.xlsx`, `.xlsm`, `.xls`) и возвращает упорядоченный список фрагментов с текстом, номером пункта, разделом, точным местом в файле и готовой ссылкой на источник (для Word — абзац с восстановленной автонумерацией, для PDF — страница и строки, для Excel — лист, строка и диапазон ячеек). Формат определяется по содержимому. Наружу сервис не опубликован.
+- **Backend** ([services/backend](services/backend)): Node.js + Express. `GET /api/health` — состояние базы и модели (`{"status":"ok","db":"ok","llm":"configured"}`). `POST /api/documents/extract` — извлечение фрагментов из одного файла (отладочный маршрут). `POST /api/auth/*` — регистрация и вход с сессией в httpOnly-cookie. Модуль [extractorClient.js](services/backend/src/extractorClient.js) — единственная точка обращения к extractor (таймаут 60 с, два повтора), [llm.js](services/backend/src/llm.js) — единственная точка обращения к модели (таймаут 90 с, два повтора, режим JSON, проверка ответа zod-схемой с одним повторным запросом при невалидном ответе, не больше 6 параллельных вызовов, типизированная ошибка → `503 llm_unavailable`).
+- **Конвейер анализа** ([services/backend/src/pipeline](services/backend/src/pipeline)), пять этапов, как в docs/TASK.md §2–§5:
+  1. [clauses.js](services/backend/src/pipeline/clauses.js) — фрагменты extractor → пункты `{doc_id, side, clause_id, parent_id, text, fragment_ids, ref}`; подпункты становятся `5.3.2.а`, склеенные номера разделяются только когда продолжают нумерацию, номера страниц и оглавление отбрасываются. Код, без модели.
+  2. [structure.js](services/backend/src/pipeline/structure.js) — подразделения. Код находит пары «Название (АББР)» и раздел о структуре, модель дополняет вид и подчинённость, код отбрасывает подразделение, названия или аббревиатуры которого нет в указанном пункте. Сравнение сторон по аббревиатуре — код (`kept` / `created` / `removed`); один вызов модели называет преемников упразднённых единиц, после чего они получают статус `reorganized`.
+  3. [extract.js](services/backend/src/pipeline/extract.js) — функции. Модель для каждого раздела размечает пункты: исполнители (аббревиатуры подразделений или должность), формулировка сути и категория из закрытого списка (`perform_audit`, `quality_control`, `plan`, `report`, `method`, `monitor`, `interact`, `other`). Заголовок «Директоры департаментов» код разворачивает на все департаменты. Цитата функции — текст пункта, модель её не пишет.
+  4. [compare.js](services/backend/src/pipeline/compare.js) — сопоставление и отклонения. Для каждой функции «до»: точное совпадение → лексическое сходство (Жаккар ≥ 0,6 по основам слов) → кандидаты (эмбеддинги, если настроены, иначе лексические) → модель-судья по трём кандидатам (`same` / `partial` / `none`, слабые ответы отклоняются) → `unmatched`. Правила отклонений — код: `POTENTIAL_LOSS` (не найдена), `MOVED` (найдена у другого исполнителя), `OVERLAP` (одна норма общая, другая частная: множества исполнителей вложены или один из них — блок или руководитель), `POTENTIAL_DUPLICATION` (одинаковая функция у равных подразделений; пары со сходством 0,4–0,7 подтверждает модель), `POTENTIAL_CONFLICT` (подразделение и проводит проверки, и контролирует качество аудита; кандидат проверяется моделью по тексту двух пунктов), `NOTE` (новая норма о конфликте интересов). Затем проверка: цитата каждого вывода должна быть подстрокой текста пункта, иначе вывод отбрасывается и считается в `stats.dropped_unverified`.
+  5. [report.js](services/backend/src/pipeline/report.js) — заключение на русском в Markdown из выводов; ссылки только вида `[до · п. X]` / `[после · п. Y]`, код удаляет любые другие и добавляет дисклеймер. Если модель недоступна на этом шаге, заключение собирается кодом из выводов.
+  Промпты — текстовые файлы в [services/backend/src/prompts](services/backend/src/prompts); текст документов передаётся как данные внутри блока `<document>` с запретом выполнять содержащиеся в нём указания.
+- **API анализа** ([routes/analyses.js](services/backend/src/routes/analyses.js)), без входа в аккаунт: `POST /api/analyses` (multipart-поля `before` и `after`, до 10 файлов в поле, до `MAX_UPLOAD_MB` МБ; тип проверяется по содержимому) → `202 {"analysis_id"}`; `POST /api/analyses/demo` — то же на встроенной контрольной паре; `GET /api/analyses/:id` — документ анализа (`status`, `stage`, `documents[]` с пунктами, `units`, `unit_changes`, `functions`, `matches`, `findings`, `conclusion_md`, `stats`). Ошибки: `415 unsupported_format`, `413 file_too_large`, `422 missing_side`, `400 empty_file`, `404 not_found`, `503 llm_unavailable` (модель не настроена). Результат хранится в MongoDB, коллекция `analyses`, один документ на запуск.
+- **Frontend** ([services/frontend](services/frontend)): Vue 3 + Vite, статика через Caddy. После входа демо-аккаунтом: две зоны загрузки «до» / «после» с перетаскиванием, кнопка запуска на контрольном комплекте, ход анализа по пяти этапам (опрос `GET /api/analyses/:id` каждые 2 с), затем результаты: показатели, вкладки «Подразделения» (статусы, преемники, источники), «Сопоставление функций» (таблица «до» → «после» с фильтрами и способом сопоставления), «Отклонения» (карточки с цитатами и ссылками на пункт; функция перераспределена / пересечения / примечания свёрнуты как менее важные), «Заключение» (Markdown, кнопка «Скачать .md»). Любая ссылка на пункт открывает полный текст пункта из сохранённого документа. Дисклеймер о рекомендательном характере показан на экране результатов и в заключении. Оформление — по дизайн-системе ([services/frontend/DESIGN_SYSTEM.md](services/frontend/DESIGN_SYSTEM.md)).
+- **Контрольный комплект** в репозитории и образе backend ([services/backend/demo](services/backend/demo)): два обезличенных PDF «Положение о внутреннем аудите», ред. 8 («до») и ред. 9 («после»).
+- Демо-аккаунт для входа в интерфейс (`demo@example.com` / `demo12345`) создаётся при старте backend ([seed.js](services/backend/src/seed.js)).
+- [scripts/smoke.sh](scripts/smoke.sh): HTTP-проверки инфраструктуры, извлечения, аутентификации, полного демо-анализа с проверкой контрольного набора и отказов API анализа (27 проверок с настроенной моделью, 18 без неё — см. «Как проверить решение»). [scripts/clean-test.sh](scripts/clean-test.sh): проверка закоммиченного состояния в чистом клоне с настройками из `.env.example`.
+- Тесты backend без ключа ([services/backend/test](services/backend/test)): сборка пунктов на фрагменте реального ответа extractor и правила сопоставления/отклонений на заглушке модели.
 
 ## Как работает решение
 
-Доступный сейчас сценарий:
+Основной сценарий:
 
-1. Проверяющий копирует `.env.example` в `.env` и запускает Docker Compose.
-2. Compose собирает образы backend, extractor и frontend, запускает MongoDB, extractor, затем backend (он подключается к базе при старте), frontend и Caddy и ждёт, пока все пять контейнеров станут healthy.
-3. Пользователь открывает `http://localhost:3000/`. Caddy проксирует запрос во frontend; страница «Анализ организационной структуры» запрашивает `/api/health` и `/api/auth/me`, показывает статус API и базы данных и форму входа/регистрации.
-4. Запрос `http://localhost:3000/api/health` проксируется в backend, который выполняет `ping` MongoDB и возвращает `{"status":"ok","db":"ok"}`.
-5. Пользователь входит демо-аккаунтом `demo@example.com` / `demo12345` (создан при старте backend) или регистрируется (имя, email, пароль не короче 8 символов). Backend проверяет поля, при регистрации хеширует пароль `scrypt` и записывает пользователя в коллекцию `users` (email уникален), затем ставит httpOnly-cookie с JWT. Страница показывает имя пользователя; «Выйти» очищает cookie.
-6. Документ отправляется на `POST /api/documents/extract`. Caddy передаёт запрос в backend; backend проверяет размер и наличие файла и пересылает его в extractor по внутренней сети.
-7. Extractor определяет формат по содержимому, разбирает документ и возвращает фрагменты: текст, номер пункта, раздел, место в файле и ссылку вида «п. 3.2, абзац 14», «п. 2, стр. 1, строка 2» или «лист «Структура», строка 3». Backend возвращает этот ответ клиенту.
-8. Проверяющий запускает smoke-скрипт и получает результаты двадцати HTTP-проверок.
+1. Проверяющий копирует `.env.example` в `.env`, вписывает ключ и имя модели (см. «Доступ для жюри») и запускает Docker Compose. Compose собирает образы и ждёт, пока все пять контейнеров станут healthy.
+2. Пользователь открывает `http://localhost:3000/`, входит демо-аккаунтом и либо перетаскивает свои документы в зоны «До реорганизации» и «После реорганизации» и нажимает «Анализировать», либо нажимает «Запустить на контрольном комплекте».
+3. Frontend отправляет `POST /api/analyses` (или `/demo`). Backend проверяет тип и размер файлов, создаёт документ анализа со статусом `queued`, отвечает `202 {"analysis_id"}` и запускает конвейер в фоне. Страница опрашивает `GET /api/analyses/:id` каждые 2 с и показывает этап: разбор → структура → функции → сопоставление → заключение.
+4. Этап 1: каждый файл уходит в extractor, фрагменты группируются в пункты. Этап 2: модель по разделу о структуре называет подразделения каждой стороны, код сверяет их с пунктами и сравнивает стороны; преемники упразднённых единиц — по одному вызову модели. Этап 3: модель размечает функции по разделам (исполнители, суть, категория). Этап 4: код сопоставляет функции «до» и «после», модель судит только кандидатов; код применяет правила отклонений и проверяет каждую цитату по тексту пункта. Этап 5: модель пишет заключение по выводам, код убирает посторонние ссылки и добавляет дисклеймер.
+5. Результат сохраняется в MongoDB и показывается во вкладках: подразделения со статусами и источниками, таблица сопоставления функций, карточки отклонений с цитатами, заключение с кнопкой скачивания.
 
-Документы не сохраняются: они обрабатываются в памяти. В MongoDB хранится только коллекция `users` (email, имя, хеш пароля, дата создания) с уникальным индексом по email, который backend создаёт при старте.
+На контрольной паре анализ занимает 2–4 минуты и делает около 45–50 обращений к модели (оба документа по 25 страниц, ~450 пунктов и ~240 функций на сторону). Загруженные файлы обрабатываются в памяти и на диск не пишутся; в базе остаются пункты (текст и ссылки), подразделения, функции, сопоставления, выводы и заключение.
 
 ## Технологии
 
-- **Docker Compose** — описывает единое окружение для локального запуска и VM.
-- **Caddy**, образ `caddy:2-alpine` — единая точка входа: `/api/*` → backend, остальное → frontend; конфигурация находится в [Caddyfile](Caddyfile). Тот же образ раздаёт статику frontend.
-- **Node.js 22** (`node:22-alpine`) и **Express 5** — backend API. Выбран потому, что команда знает JavaScript, а один язык на backend и frontend ускоряет работу за 5 часов.
-- **Python 3.12** (`python:3.12-slim`), **FastAPI**, **uvicorn** — сервис извлечения текста. Python выбран из-за зрелых библиотек разбора документов. Зависимости зафиксированы в `services/extractor/uv.lock` и ставятся через **uv**.
-- **python-docx** (Word), **pdfplumber** на базе pdfminer.six (PDF), **openpyxl** (`.xlsx`/`.xlsm`), **xlrd** (`.xls`), **python-multipart** (загрузка файлов). В образ extractor также входят **pytest** и **httpx** для тестов.
-- **jsonwebtoken 9** и **zod 4** — подпись JWT для cookie сессии и валидация тел запросов в backend; пароли хешируются функцией `scrypt` из встроенного модуля `node:crypto`, без дополнительных библиотек.
-- **Vue 3** и **Vite 6** — frontend, собирается в статические файлы на этапе сборки образа. Выбран по знакомству команды. Стили написаны на обычном CSS с переменными, без UI-библиотеки.
-- **@fontsource/nunito-sans** и **@fontsource/pt-serif** 5.3 — шрифты интерфейса и цитат из документов. Vite включает их в сборку, поэтому страница работает без доступа к внешним CDN.
-- **MongoDB**, образ `mongo:8.0` — отдельный сервис базы данных с постоянным томом. Backend подключается к нему через официальный Node.js-драйвер `mongodb` 6.21 (база `hackalem` из `MONGO_URL`).
-- **Bash** — язык проверочных скриптов; они также используют стандартные системные утилиты, включая `grep`, `sed` и `mktemp`.
-- **curl**, образ `curlimages/curl:8.10.1` — выполняет HTTP-запросы smoke-проверки внутри контейнера.
-- **Git** — нужен для получения репозитория и проверки чистого клона.
-
-AI-модели и внешние AI API пока не подключены.
+- **Docker Compose** — единое окружение для локального запуска, VM и жюри.
+- **Caddy**, образ `caddy:2-alpine` — единая точка входа: `/api/*` → backend, остальное → frontend ([Caddyfile](Caddyfile)). Тот же образ раздаёт статику frontend.
+- **Node.js 22** (`node:22-alpine`) и **Express 5** — backend API и конвейер анализа. Один язык на backend и frontend.
+- **openai 7** (официальный SDK для OpenAI-совместимых API) — вызовы модели из [llm.js](services/backend/src/llm.js): `chat.completions` в режиме JSON и `embeddings`. Провайдер, модель и адрес задаются переменными окружения. Команда использует модель **gpt-5.6-terra** (OpenAI) с `LLM_PROVIDER=openai`; любой OpenAI-совместимый провайдер подключается через `LLM_BASE_URL`.
+- **zod 4** — схемы всех ответов модели и итогового документа анализа; **multer 2** — приём multipart; **jsonwebtoken 9** — сессии; пароли — `scrypt` из `node:crypto`.
+- **Python 3.12** (`python:3.12-slim`), **FastAPI**, **uvicorn**, **uv** — сервис извлечения текста: **python-docx** (Word), **pdfplumber** (PDF), **openpyxl** и **xlrd** (Excel), **python-multipart**; **pytest** и **httpx** для тестов.
+- **Vue 3** и **Vite 6** — frontend, статическая сборка; **marked 18** — рендер заключения из Markdown (HTML в тексте экранируется до разбора); обычный CSS с переменными без UI-библиотек; шрифты **@fontsource/nunito-sans** и **@fontsource/pt-serif** в сборке, без внешних CDN.
+- **MongoDB**, образ `mongo:8.0` — коллекции `users` и `analyses`; драйвер `mongodb` 6.21.
+- **Bash**, **curl** (`curlimages/curl:8.10.1`) и **python:3.12-slim** — проверочные скрипты; все запросы и проверка JSON выполняются в контейнерах.
+- **Git** — получение репозитория и проверка чистого клона.
 
 ## Архитектура проекта
 
 ```mermaid
 flowchart LR
     user[Браузер / smoke-скрипт] -->|HTTP :3000| caddy[Caddy]
-    caddy -->|/api/*| backend[Backend: Node.js + Express]
+    caddy -->|/api/*| backend[Backend: Node.js + Express<br/>конвейер из 5 этапов]
     caddy -->|/*| frontend[Frontend: Vue 3, статика]
     backend -.->|внутренняя сеть| extractor[Extractor: Python + FastAPI]
-    backend -->|MONGO_URL, ping в /health| mongo[(MongoDB)]
-    mongo --> volume[(Том mongo-data)]
+    backend -->|users, analyses| mongo[(MongoDB)]
+    backend -->|OPENAI_API_KEY, LLM_MODEL| llm[OpenAI-совместимый API]
 ```
 
-**Caddy** — единственный сервис с опубликованными портами: по умолчанию HTTP `3000` и HTTPS `3443`. Проксирует `/api/*` в `backend:8000`, остальные запросы — в `frontend:80`. Тома `caddy-data` и `caddy-config` сохраняют его данные и конфигурацию.
+Конвейер внутри backend (docs/TASK.md §2): `clauses.js` (extractor + код) → `structure.js` (модель + код) → `extract.js` (модель) → `compare.js` (код + модель-судья) → `report.js` (модель + код). Принцип: extractor режет, код сопоставляет и считает, модель только размечает и пишет заключение; каждая цитата проверяется кодом до выдачи.
 
-Корневой `Caddyfile` включён в образ через [services/caddy/Dockerfile](services/caddy/Dockerfile). После изменения маршрутов `docker compose up --build -d --wait` пересобирает образ и пересоздаёт контейнер Caddy с новой конфигурацией. Это устраняет сохранение старой страницы-заглушки при обновлении файла без перезапуска Caddy. Контекст сборки ограничен конфигурацией и Dockerfile; `.env` в образ не попадает.
+**Caddy** — единственный сервис с опубликованными портами (по умолчанию HTTP `3000`, HTTPS `3443`). Проксирует `/api/*` в `backend:8000`, остальное — в `frontend:80`. Корневой `Caddyfile` включён в образ ([services/caddy/Dockerfile](services/caddy/Dockerfile)).
 
-**Backend** — контейнер из [services/backend/Dockerfile](services/backend/Dockerfile), порт `8000` внутри сети Compose. Зависимости (`express`, `mongodb`, `multer`, `jsonwebtoken`, `zod`) зафиксированы в `package-lock.json`. При старте открывает подключение к MongoDB и создаёт уникальный индекс `users.email` ([services/backend/src/db.js](services/backend/src/db.js)); healthcheck запрашивает `/health`, который отвечает `200` только при успешном `ping` базы.
+**Backend** — [services/backend/Dockerfile](services/backend/Dockerfile), порт `8000` внутри сети. Зависимости зафиксированы в `package-lock.json`; в образ входят тесты и контрольные PDF. При старте подключается к MongoDB, создаёт индексы (`users.email`, `analyses.created_at`) и демо-аккаунт; healthcheck — `/health` (200 только при успешном `ping` базы).
 
-**Frontend** — двухэтапный образ из [services/frontend/Dockerfile](services/frontend/Dockerfile): `node:22-alpine` собирает Vite-проект, `caddy:2-alpine` раздаёт `dist/` на порту `80`.
+**Frontend** — двухэтапный образ ([services/frontend/Dockerfile](services/frontend/Dockerfile)): `node:22-alpine` собирает Vite-проект, `caddy:2-alpine` раздаёт `dist/`.
 
-**Extractor** — контейнер из [services/extractor/Dockerfile](services/extractor/Dockerfile), порт `8001` только внутри сети Compose. Разбирает Word, PDF и Excel в фрагменты со ссылками на источник. Healthcheck запрашивает `/health`.
+**Extractor** — [services/extractor/Dockerfile](services/extractor/Dockerfile), порт `8001` только внутри сети; разбор выполняется в отдельном потоке, `/health` отвечает во время разбора.
 
-**MongoDB** — независимый контейнер в сети Compose. Порт базы не опубликован на хосте; данные хранятся в `mongo-data`. Его healthcheck выполняет команду `ping`. Backend стартует только после того, как MongoDB станет healthy (`depends_on: service_healthy`), и держит одно подключение на процесс.
+**MongoDB** — порт не опубликован; данные в томе `mongo-data`; backend стартует после того, как база станет healthy.
 
 ## Установка и запуск
 
-Нужны Git, работающий Docker с плагином Compose и Bash со стандартными системными утилитами для проверочных скриптов. Для загрузки репозитория и контейнерных образов требуется доступ к сети. Устанавливать Python, Node.js или зависимости приложения на хост не требуется.
+Нужны Git, Docker с плагином Compose и Bash. Для загрузки репозитория, образов и обращений к модели требуется доступ к сети. На хост ничего, кроме Docker и Git, ставить не нужно.
 
 ```bash
 git clone https://github.com/BAITC-Hacks/hack-0592591a-optimus.git
 cd hack-0592591a-optimus
 cp .env.example .env
+# впишите в .env ключ и модель: OPENAI_API_KEY=… и LLM_MODEL=gpt-5.6-terra (см. «Доступ для жюри»)
 docker compose up --build -d --wait
 ```
 
-Откройте [локальную страницу](http://localhost:3000). Порты `3000` и `3443` должны быть свободны; при необходимости измените их в `.env` перед запуском.
+Откройте [локальную страницу](http://localhost:3000). Порты `3000` и `3443` должны быть свободны; при необходимости измените их в `.env`.
 
-Все параметры перечислены в [.env.example](.env.example):
+Параметры [.env.example](.env.example):
 
-- `SITE_ADDRESS=:80` — адрес сайта для Caddy; по умолчанию обычный HTTP. Публичное доменное имя включает автоматический HTTPS при доступных DNS и публичных портах; на VM используются `WEB_PORT=80` и `HTTPS_PORT=443`.
-- `WEB_PORT=3000` — порт HTTP на хосте.
-- `HTTPS_PORT=3443` — порт HTTPS на хосте; при `SITE_ADDRESS=:80` HTTPS не настроен.
-- `MONGO_URL=mongodb://mongo:27017/hackalem` — строка подключения backend к MongoDB внутри сети Compose; имя базы берётся из пути URL. Используется при старте backend и в `/api/health`.
-- `MAX_UPLOAD_MB=20` — максимальный размер загружаемого документа в мегабайтах для сервиса извлечения текста.
-- `AUTH_SECRET=dev-only-secret-change-me` — секрет подписи JWT для cookie сессии. Значение по умолчанию нужно только для запуска из `.env.example`; на VM задано своё случайное значение. Смена секрета делает все сессии недействительными.
-- `DEMO_USER_EMAIL=demo@example.com`, `DEMO_USER_PASSWORD=demo12345`, `DEMO_USER_NAME=Демо` — демо-аккаунт, который backend создаёт при старте, если пользователя с таким email ещё нет (существующий не перезаписывается). Пустой `DEMO_USER_PASSWORD` отключает создание.
-- `LLM_PROVIDER=openai` — заготовка выбора провайдера, сейчас не используется.
-- `LLM_MODEL` — пустая заготовка имени модели, сейчас не используется.
-- `EMBEDDING_MODEL` — пустая заготовка имени модели эмбеддингов для будущего сопоставления функций; сейчас не используется.
-- `LLM_BASE_URL` — пустая заготовка адреса AI API, сейчас не используется.
-- `OPENAI_API_KEY` — пустая заготовка ключа, сейчас не используется.
-- `NVIDIA_API_KEY` — пустая заготовка ключа, сейчас не используется.
+- `SITE_ADDRESS=:80` — адрес сайта для Caddy; обычный HTTP. Публичное доменное имя включает автоматический HTTPS (на VM: `WEB_PORT=80`, `HTTPS_PORT=443`).
+- `WEB_PORT=3000`, `HTTPS_PORT=3443` — порты на хосте.
+- `MONGO_URL=mongodb://mongo:27017/hackalem` — строка подключения backend к MongoDB внутри сети Compose.
+- `MAX_UPLOAD_MB=20` — максимальный размер одного загружаемого документа.
+- `AUTH_SECRET` — секрет подписи cookie сессии; значение по умолчанию только для локального запуска.
+- `DEMO_USER_EMAIL`, `DEMO_USER_PASSWORD`, `DEMO_USER_NAME` — демо-аккаунт, создаётся при старте, если его нет; пустой пароль отключает создание.
+- `LLM_PROVIDER=openai` — `openai` (ключ `OPENAI_API_KEY`) или `nvidia` (ключ `NVIDIA_API_KEY`, адрес `https://integrate.api.nvidia.com/v1` по умолчанию). **Используется.**
+- `LLM_MODEL` — имя чат-модели с поддержкой режима JSON, например `gpt-5.6-terra`. **Обязательна для анализа.** Пустое значение: приложение запускается, `/api/health` отвечает `"llm":"missing"`, запуск анализа отвечает `503 llm_unavailable`.
+- `LLM_BASE_URL` — адрес OpenAI-совместимого API; пусто — адрес провайдера по умолчанию.
+- `OPENAI_API_KEY` / `NVIDIA_API_KEY` — ключ выбранного провайдера. **Обязателен для анализа.** В репозиторий не входит.
+- `EMBEDDING_MODEL` — модель эмбеддингов на том же API для семантических кандидатов при сопоставлении. Пусто — кандидаты подбираются лексически, анализ выполняется полностью; `stats.embeddings` = `"unavailable"`. У ключа команды доступа к моделям эмбеддингов нет, поэтому по умолчанию переменная пуста.
 
-Для текущей версии ключи и изменения `.env.example` не нужны. `.env` исключён из Git.
-
-Просмотр состояния и логов:
+Состояние и логи:
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 caddy mongo
+docker compose logs --tail=100 backend
 ```
 
-Остановка с сохранением данных:
+В логе backend каждый вызов модели печатается строкой `[llm] <этап>: <мс>, in=<токены> out=<токены>`, а завершение анализа — строкой `[pipeline] a_… done in N s: {…статистика…}`.
 
-```bash
-docker compose down
-```
+Остановка с сохранением данных: `docker compose down`.
 
 ## Как проверить решение
 
-После запуска выполните:
+Проверка одной командой (с ключом в `.env` занимает 3–5 минут, потому что выполняет полный демо-анализ):
 
 ```bash
 ./scripts/smoke.sh
 ```
 
-Ожидаемый результат: двадцать успешных проверок (`backend health`, `mongo reachable`, `frontend is up`, `unknown api route`, `extract pdf clauses`, `reject unsupported type`, `reject missing file`, `signup (or already registered)`, `login`, `reject wrong password`, `reject invalid signup`, `me requires session`, `me with session cookie`, `demo account login`, `demo analysis queued (202)`, `demo analysis done`, `demo clause 5.6.2 with its source`, `analysis rejects unsupported type (415)`, `analysis rejects a missing side (422)`, `unknown analysis id (404)`), итог `passed=20 failed=0` и код завершения `0`. Проверки аутентификации используют синтетический аккаунт `smoke@example.com` с паролем `smoke-pass-123`: первый запуск регистрирует его, последующие получают `email_taken`, что также считается успехом. Скрипт ищет `"status":"ok"` и `"db":"ok"` в ответе `/api/health`, заголовок страницы в ответе `/`, код `not_found` для `/api/does-not-exist`, ссылку `"п. 2, стр. 1, строка 2"` в ответе на PDF, который он сам генерирует, код `unsupported_format` для `.txt` и HTTP `400` для запроса без файла. Демо-анализ он запускает через `POST /api/analyses/demo`, до 60 секунд ждёт `"status":"done"` и проверяет пункт `5.6.2` ред. 8 со ссылкой `п. 5.6.2, стр. 10, строки 11–12`. Выявление отклонений и AI он не проверяет, потому что эти этапы ещё не реализованы.
+Ожидаемый результат с настроенной моделью — 27 успешных проверок, итог `passed=27 failed=0`, код завершения `0`:
 
-Извлечение текста из своего документа (`.docx`, `.pdf`, `.xlsx`, `.xlsm`, `.xls`); замените `document.docx` путём к файлу:
+- инфраструктура: `backend health`, `mongo reachable`, `frontend is up`, `unknown api route`;
+- извлечение: `extract pdf clauses`, `reject unsupported type`, `reject missing file`;
+- аутентификация: `signup (or already registered)`, `login`, `reject wrong password`, `reject invalid signup`, `me requires session`, `me with session cookie`, `demo account login`;
+- демо-анализ: `demo analysis queued (202)`, `demo analysis done` (ожидание до 12 минут), `demo clause 5.6.2 with its source`;
+- контрольный набор (docs/TASK.md §9): `control set: units ДИТААД and ДОА created`, `control set: a unit reorganized into successors`, `control set: POTENTIAL_LOSS at до п. 5.6.2 with its quote`, `control set: POTENTIAL_DUPLICATION после п. 5.4.3 / 5.5.8`, `control set: POTENTIAL_CONFLICT cites после п. 5.5.2`, `every finding has a verified quote`, `conclusion carries the advisory disclaimer`;
+- отказы API анализа: `analysis rejects unsupported type (415)`, `analysis rejects a missing side (422)`, `unknown analysis id (404)`.
 
-```bash
-docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS -F "file=@/d/document.docx" http://host.docker.internal:3000/api/documents/extract
-```
+Без ключа (например, `.env.example` как есть) скрипт печатает `skip demo analysis and control set: LLM not configured`, вместо демо-анализа проверяет ответ `503 llm_unavailable` и завершается с `passed=18 failed=0`. Так проходит `./scripts/clean-test.sh`, если не подставить ключ. Проверки аутентификации используют синтетический аккаунт `smoke@example.com` / `smoke-pass-123`. При другом порте: `WEB_PORT=3100 ./scripts/smoke.sh`.
 
-Форма ответа (сокращено):
-
-```json
-{
-  "document": {"filename": "Положение.docx", "format": "docx", "size_bytes": 36736, "sha256": "…", "title": "Положение о Департаменте закупок", "paragraphs": 4, "tables": 0},
-  "fragments": [
-    {"id": "f00003", "kind": "list_item", "text": "1. Планирование закупок.", "clause": "1", "marker": null,
-     "section": "Положение о Департаменте закупок › 3. Функции", "location": {"paragraph": 3}, "ref": "п. 1, абзац 3"}
-  ],
-  "text": "…весь текст документа по фрагментам…",
-  "stats": {"fragments": 4, "characters": 120},
-  "warnings": []
-}
-```
-
-`kind` — `heading`, `paragraph`, `list_item`, `table_row` (Word) или `sheet_row` (Excel). `clause` — номер пункта (`"5.3.2"`) или `null`; подпункты `а)`, `б.` получают `clause: null` и букву в `marker` (`"а"`), чтобы backend присоединял их к открытому пункту. `location` зависит от формата: `{"paragraph"}` или `{"table","row","cells"}` для Word, `{"page","line_start","line_end"}` для PDF, `{"sheet","row","range","cells"}` для Excel. Ошибки возвращаются как `{"error":{"code","message"}}`: `400 bad_request`/`empty_file`, `413 file_too_large`/`document_too_large`, `415 unsupported_format`, `422 unreadable_document`, `503 extractor_unavailable`, `504 extractor_timeout`.
-
-Регистрация и вход через API (пример для Bash и Zsh). Cookie хранится во временной директории вне репозитория и удаляется после проверки. Функция передаёт аргументы Docker без повторного разбора кавычек; пути с пробелами также поддерживаются.
-
-```bash
-(
-  AUTH_COOKIE_DIR="$(mktemp -d)"
-  trap 'if [ -f "$AUTH_COOKIE_DIR/jar" ]; then unlink "$AUTH_COOKIE_DIR/jar"; fi; rmdir "$AUTH_COOKIE_DIR"' EXIT
-  api_curl() {
-    docker run --rm --user "$(id -u):$(id -g)" \
-      -v "$AUTH_COOKIE_DIR:/cookies" \
-      --add-host=host.docker.internal:host-gateway \
-      curlimages/curl:8.10.1 -sS -w '\nHTTP %{http_code}\n' "$@"
-  }
-  api_curl -c /cookies/jar -H 'content-type: application/json' \
-    -d '{"name":"Тест README","email":"readme-demo@example.com","password":"example-pass-123"}' \
-    http://host.docker.internal:3000/api/auth/signup
-  api_curl -c /cookies/jar -H 'content-type: application/json' \
-    -d '{"email":"readme-demo@example.com","password":"example-pass-123"}' \
-    http://host.docker.internal:3000/api/auth/login
-  api_curl -b /cookies/jar http://host.docker.internal:3000/api/auth/me
-)
-```
-
-Первый запуск возвращает HTTP `201`, `200`, `200`. При повторном запуске регистрация возвращает `409 email_taken`, а вход и `/me` — `200`. Это отдельный синтетический аккаунт для проверки примера, не личные учётные данные. При другом HTTP-порте замените `3000` во всех трёх адресах.
-
-Успешные ответы — `{"user":{"id","email","name","createdAt"}}` (`201` для регистрации, `200` для входа и `/me`), `logout` отвечает `204`. Ошибки: `401 invalid_credentials` (неверный email или пароль), `401 unauthorized` (нет или истекла сессия), `409 email_taken`, `422 validation_error` (в `message` — поле и причина). Хеш пароля API не возвращает. То же самое доступно в браузере на стартовой странице.
-
-Если `WEB_PORT` изменён в `.env`, передайте тот же порт скрипту явно: скрипт сам `.env` не читает. Например, для порта `3100`:
-
-```bash
-WEB_PORT=3100 ./scripts/smoke.sh
-```
-
-Тесты сервиса извлечения (тестовые Word, Excel и PDF создаются в коде теста, ключи не нужны):
-
-```bash
-docker compose run --rm --no-deps extractor pytest -q
-```
-
-Они проверяют: восстановление автонумерации Word, включая начало с заданного номера (`lvlOverride`/`startOverride`), независимые списки и многоуровневые пункты; разделы по заголовкам, буквенные подпункты (`marker` вместо `clause`) в Word и PDF, строки таблиц Word, строки и диапазоны ячеек Excel, склейку перенесённых строк PDF и ссылки «п. N, стр. N, строки N–N», предупреждение для PDF без текстового слоя, определение формата по содержимому, а также отказ на `.txt`, `.doc`, пустой, повреждённый файл и zip-бомбу.
-
-Отдельный регрессионный тест удерживает определение формата или разбор файла в рабочем потоке и проверяет, что `/health` отвечает до завершения обработки. Он защищает от возврата синхронного разбора в основной цикл сервера.
-
-Демо-анализ через API (сейчас выполняется только этап 1 — сборка пунктов; занимает около 10 секунд):
+Демо-анализ через API вручную:
 
 ```bash
 docker run --rm --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS -X POST http://host.docker.internal:3000/api/analyses/demo
 ```
 
-Ответ — `{"analysis_id":"a_…"}`. Подставьте id в запрос статуса:
+Ответ — `{"analysis_id":"a_…"}`. Подставьте id и повторяйте запрос, пока `status` не станет `done` (2–4 минуты):
 
 ```bash
 docker run --rm --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS http://host.docker.internal:3000/api/analyses/a_XXXXXXXXXXXX
 ```
 
-Ожидается `"status":"done"`, `"pipeline":{"implemented":["clauses"],…}`, `"stats":{"clauses_before":450,"clauses_after":453,…}`, а в `documents[].clauses` — например, пункт `5.6.2` со ссылкой `п. 5.6.2, стр. 10, строки 11–12` (ред. 8).
+Ожидаемый результат на контрольной паре (ред. 8 → ред. 9). Точные количества функций и второстепенных выводов от запуска к запуску немного меняются, потому что разметку делает модель; перечисленные ниже находки воспроизводились во всех проверочных запусках 23.09.2026:
+
+- `stats.clauses_before` = 450, `stats.clauses_after` = 453; `stats.dropped_unverified` = 0.
+- `unit_changes`: `created` — ДИТААД (Департамент ИТ-аудита и анализа данных, после п. 3.4.а) и ДОА (Департамент операционного аудита, после п. 3.4.б); `kept` — БВА, Главный аудитор, ДНМ, ДККМ; `reorganized` — Направление внутреннего аудита (до п. 3.5.а) с преемниками ДИТААД и ДОА.
+- `findings` типа `POTENTIAL_LOSS`: право ДККМ формировать группы контроля качества (до п. 5.6.2, «формировать группы контроля качества с привлечением работников БВА…»), предложения ДККМ по внешней оценке БВА (до п. 5.6.3), доведение ДНМ результатов консультационных услуг (до п. 5.7.2), а также несколько других пунктов ред. 8, которым модель не нашла эквивалента (например, раздел 12 об информировании Совета директоров). Каждый такой вывод требует проверки сотрудником.
+- `POTENTIAL_DUPLICATION`: запрос информации у Руководителей Общества у ДНМ и ДККМ (после п. 5.4.3 и 5.5.8), прочие поручения Главного аудитора (после п. 5.4.10 и 5.5.10, низкая важность).
+- `OVERLAP`: общие нормы для директоров всех департаментов (после п. 5.3.x) и частные нормы ДНМ / ДККМ (после п. 5.4.x, 5.5.x), например 5.3.3 ↔ 5.4.2, 5.3.6 ↔ 5.4.3 и 5.5.8, 5.3.9 ↔ 5.4.6, 5.3.11 ↔ 5.4.8, 5.3.12 ↔ 5.4.9.
+- `POTENTIAL_CONFLICT`: ДККМ одновременно организует и проводит проверки (после п. 5.3.x) и контролирует качество внутреннего аудита (после п. 5.5.2); `review.verdict` = `potential_conflict` с объяснением модели.
+- `MOVED`: функции Директора направления внутреннего аудита (до п. 5.3.x) перераспределены директорам департаментов (после п. 5.3.x).
+- `NOTE`: новая норма о конфликте интересов (после п. 4.4).
+- `conclusion_md` — заключение с разделами «Итоги реорганизации», «Возможная потеря функций», «Возможное дублирование и пересечения», «Возможные конфликты», «Рекомендации» и дисклеймером в конце.
 
 Тесты backend (ключи и запущенные сервисы не нужны):
 
@@ -216,128 +162,86 @@ docker run --rm --add-host=host.docker.internal:host-gateway curlimages/curl:8.1
 docker compose run --rm --no-deps backend node --test
 ```
 
-Они проверяют этап 1 конвейера — сборку пунктов из фрагментов ([clauses.js](services/backend/src/pipeline/clauses.js)) — на фрагменте реального ответа extractor для демо-документа ред. 9 ([test/fixtures](services/backend/test/fixtures)): разделение склеенных номеров (`б. Руководитель направления. 3.10.Рабочие места…` → пункты 3.9.б, 3.10, 3.11), пункт 3.12 без пробела после номера, подпункты как дочерние пункты `5.3.2.а`, удаление номеров страниц и хвоста «Оглавление», проверку последовательности номеров (ссылка «см. п. 3.» не становится пунктом) и строки Excel как отдельные записи.
+[clauses.test.js](services/backend/test/clauses.test.js) проверяет сборку пунктов на фрагменте реального ответа extractor для ред. 9 (склеенные номера, подпункты `5.3.2.а`, номера страниц, оглавление, строки Excel). [compare.test.js](services/backend/test/compare.test.js) проверяет на заглушке модели: точное и лексическое совпадение без вызова модели, кандидатов по эмбеддингам и решение судьи, отклонение слабого ответа `partial`, лексический запасной путь без эмбеддингов и `POTENTIAL_LOSS` с цитатой пункта, `OVERLAP` для общей и частной нормы против `POTENTIAL_DUPLICATION` для равных подразделений, кандидата в конфликт с подтверждением и с отклонением моделью, удаление вывода с подделанной цитатой, удаление посторонних ссылок из заключения и дисклеймер, сравнение подразделений и разворачивание исполнителей.
 
-Проверка запуска из чистого локального клона:
+Тесты extractor: `docker compose run --rm --no-deps extractor pytest -q` (автонумерация Word, подпункты, таблицы, Excel, PDF, отказы на неверные файлы, отзывчивость `/health` во время разбора).
+
+Проверка из чистого клона: `./scripts/clean-test.sh` — клонирует закоммиченное состояние во временную директорию, копирует `.env.example`, собирает без кеша на портах `3900`/`3901`, запускает smoke и всё удаляет. Ожидаемая последняя строка: `>> Clean-clone test passed`. Чтобы в чистом клоне прошёл и демо-анализ, впишите ключ в `.env.example` временной копии или экспортируйте `OPENAI_API_KEY` и `LLM_MODEL` в окружение перед запуском (Compose подставляет их в контейнер).
+
+Извлечение текста из своего документа (отладочный маршрут; замените `document.docx` путём к файлу):
 
 ```bash
-./scripts/clean-test.sh
+docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS -F "file=@/d/document.docx" http://host.docker.internal:3000/api/documents/extract
 ```
 
-Этот скрипт клонирует **закоммиченное** состояние текущего репозитория во временную директорию, копирует `.env.example`, использует отдельный Compose-проект и порты `3900`/`3901`, вызывает сборку без кеша, запускает сервисы и выполняет smoke-проверку. После завершения удаляет тестовые контейнеры, тома и временный клон. Ожидаемая последняя строка: `>> Clean-clone test passed`.
+Ответ: `document` (имя, формат, размер, sha256, заголовок, страницы), `fragments[]` (`id`, `kind`, `text`, `clause`, `marker`, `section`, `location`, `ref`), `text`, `stats`, `warnings`. Ошибки: `400 bad_request`/`empty_file`, `413 file_too_large`, `415 unsupported_format`, `422 unreadable_document`, `503 extractor_unavailable`, `504 extractor_timeout`.
 
-Незакоммиченные изменения в эту проверку не попадают. При занятых тестовых портах задайте другой базовый порт через `CLEAN_TEST_PORT`.
+Регистрация и вход через API описаны в [routes/auth.js](services/backend/src/routes/auth.js): `POST /api/auth/signup` `{name,email,password}` → `201 {user}` и cookie, `POST /api/auth/login` → `200`, `GET /api/auth/me` → `200` или `401 unauthorized`, `POST /api/auth/logout` → `204`. Вход нужен только для интерфейса; API анализа открыт.
 
 ## Данные и интеграции
 
-В репозитории и образе backend (`/app/demo`) поставляются два обезличенных PDF «Положение о внутреннем аудите АО „Компания“», по 25 страниц каждый:
+- **Контрольный комплект.** В репозитории и образе backend (`/app/demo`) — два обезличенных PDF «Положение о внутреннем аудите АО „Компания“», по 25 страниц: [ред. 8](services/backend/demo/before/redakciya_8.pdf) («до», SHA-256 `2257b6fa007c4d03ae336f556a93434bd7220292c8394bac6f13e190e1017bb1`) и [ред. 9](services/backend/demo/after/redakciya_9.pdf) («после», SHA-256 `84eb8e79a0eccb9e7c0a922e38301b1210bfb4e6d15ac93feacfce5e23fed3a5`). Файлы предоставлены пользователем 23.09.2026 с поручением включить их как демоданные; байты не менялись, изменены только имена. Отдельная лицензия на распространение в документах не указана.
+- **Модель.** Единственная внешняя интеграция — OpenAI-совместимый API чат-моделей через SDK `openai` (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL`, ключ). Команда использует `gpt-5.6-terra`. Эмбеддинги не используются, пока `EMBEDDING_MODEL` пуст. Ответы модели не кэшируются: каждый запуск анализа выполняет все вызовы заново.
+- **База.** MongoDB `hackalem`: `users` (email, имя, хеш пароля, дата) и `analyses` (по документу на запуск: статус, этап, пункты документов, подразделения, функции, сопоставления, выводы, заключение, статистика). Сами файлы не сохраняются.
+- **Нормативная база для сверки с законодательством (опция O1, в разработке).** В `services/backend/data/regulatory/` лежат тексты трёх действующих законов РК в формате JSONL: одна запись на статью или пункт, всего 477 записей, около 1,2 МБ.
 
-- **До:** [редакция 8](services/backend/demo/before/redakciya_8.pdf), исходное имя `Положение_о_внутреннем_аудите_редакция_8_обезличено.docx.pdf`. SHA-256: `2257b6fa007c4d03ae336f556a93434bd7220292c8394bac6f13e190e1017bb1`.
-- **После:** [редакция 9](services/backend/demo/after/redakciya_9.pdf), исходное имя `Положение_о_внутреннем_аудите_редакция_9_обезличено.docx.pdf`. SHA-256: `84eb8e79a0eccb9e7c0a922e38301b1210bfb4e6d15ac93feacfce5e23fed3a5`.
+  | Файл | Акт | Редакция | Записей |
+  |---|---|---|---|
+  | `Z030000415_.jsonl` | Закон РК «Об акционерных обществах» | от 13.08.2026 | 291 |
+  | `Z1500000410.jsonl` | Закон РК «О противодействии коррупции» | от 13.08.2026 | 116 |
+  | `Z1200000550.jsonl` | Закон РК «О Фонде национального благосостояния» | от 13.08.2026 | 70 |
 
-Источник — файлы, предоставленные пользователем 23.09.2026 с явным поручением включить их в репозиторий как демоданные. Байты оригиналов сохранены; изменены только имена файлов. Отдельная лицензия на распространение в документах не указана; открытая лицензия им не приписывается.
-
-После запуска Compose проверить извлечение обоих PDF без ключей и входа можно командой ниже. Она читает файлы из образа backend и вызывает существующий API. Ожидается: ред. 8 — 527 фрагментов, 337 с номером пункта; ред. 9 — 528 фрагментов, 325 с номером пункта; оба ответа HTTP 200, по 25 страниц, без предупреждений.
-
-```bash
-docker compose exec -T backend node --input-type=module <<'JS'
-import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import assert from 'node:assert/strict';
-for (const [file, count, clauses] of [
-  ['before/redakciya_8.pdf', 527, 337],
-  ['after/redakciya_9.pdf', 528, 325],
-]) {
-  const data = await readFile(`/app/demo/${file}`);
-  const form = new FormData();
-  form.append('file', new Blob([data], { type: 'application/pdf' }), file.split('/').pop());
-  const response = await fetch('http://localhost:8000/api/documents/extract', {
-    method: 'POST', body: form, signal: AbortSignal.timeout(60000),
-  });
-  assert.equal(response.status, 200);
-  const result = await response.json();
-  assert.equal(result.document.sha256, createHash('sha256').update(data).digest('hex'));
-  assert.equal(result.document.pages, 25);
-  assert.equal(result.stats.fragments, count);
-  assert.equal(result.fragments.filter(f => f.clause !== null).length, clauses);
-  assert.deepEqual(result.warnings, []);
-  console.log(`${file}: HTTP 200, 25 страниц, ${count} фрагментов, ${clauses} с номером пункта`);
-}
-JS
-```
-
-Это проверка извлечения текста, а не автоматического сравнения оргструктуры. Ожидаемые находки из [docs/TASK.md](docs/TASK.md) ещё требуют проверки после реализации анализа. Тесты extractor дополнительно создают небольшие синтетические Word/Excel/PDF в памяти; smoke-скрипт генерирует свой PDF.
-
-**Нормативная база для сверки с законодательством (опция O1, в разработке).** В `services/backend/data/regulatory/` лежат тексты трёх действующих законов РК в формате JSONL: одна запись на статью или пункт, всего 477 записей, около 1,2 МБ.
-
-| Файл | Акт | Редакция | Записей |
-|---|---|---|---|
-| `Z030000415_.jsonl` | Закон РК «Об акционерных обществах» | от 13.08.2026 | 291 |
-| `Z1500000410.jsonl` | Закон РК «О противодействии коррупции» | от 13.08.2026 | 116 |
-| `Z1200000550.jsonl` | Закон РК «О Фонде национального благосостояния» | от 13.08.2026 | 70 |
-
-- **Источник.** ИПС «Әділет» (adilet.zan.kz). Тексты собраны скрейпингом; взяты только акты со статусом «действует». Выгрузка сделана 23.09.2026, поэтому на сайте может действовать более новая редакция.
-- **Содержание записи.** Номер статьи и пункта, текст, дата редакции и ссылка на этот пункт на adilet.zan.kz (поле `source_url`).
-- **Правовой статус.** Официальные тексты законов не являются объектами авторского права (ст. 8 п. 1 Закона РК «Об авторском праве и смежных правах»).
-- **Использование.** Приложение пока не читает эти файлы: они не копируются в образ backend и не загружаются в MongoDB.
-
-Backend при старте создаёт в базе `hackalem` уникальный индекс по `users.email` и синтетический демо-аккаунт `demo@example.com` (см. «Доступ для жюри»); остальные пользователи появляются при регистрации. Демо-аккаунт предназначен только для входа и не содержит документов или результатов анализа. Вызовов внешних API и интеграций с AI-провайдерами нет; соответствующие переменные окружения только зарезервированы.
-
-Внешние зависимости запуска — GitHub для клонирования и реестры контейнеров для получения образов. Caddy поддерживает автоматические сертификаты при настройке публичного домена; для локального HTTP они не требуются.
+  Источник — ИПС «Әділет» (adilet.zan.kz); тексты собраны скрейпингом, взяты только акты со статусом «действует», выгрузка от 23.09.2026 (на сайте может действовать более новая редакция). Запись содержит номер статьи и пункта, текст, дату редакции и ссылку на пункт на adilet.zan.kz (`source_url`). Официальные тексты законов не являются объектами авторского права (ст. 8 п. 1 Закона РК «Об авторском праве и смежных правах»). Приложение пока не читает эти файлы: они не копируются в образ backend и не загружаются в MongoDB.
+- **Законодательство и бенчмаркинг** (опциональные пункты ТЗ): в этой версии с функциями не сопоставляются; поле `regulations` в `POST /api/analyses` принимается, такие документы разбираются на пункты и сохраняются, но дальше не используются.
 
 ## Ограничения
 
-- ТЗ и критерии оценки записаны в `docs/TASK.md`, но обязательные функции анализа документов ещё не реализованы.
-- Контрольные PDF включены и проверены на извлечение текста; демонстрационный анализ и автоматическая проверка ожидаемых находок из `docs/TASK.md` пока отсутствуют.
-- Есть стартовый Vue-интерфейс, API проверки состояния и API извлечения текста из документов. Интерфейс загрузки, сравнение комплектов «до/после», основной продуктовый сценарий и AI-обработка отсутствуют.
-- Из моделей данных есть только пользователь (`users`); результаты извлечения и анализа не сохраняются; вызовов LLM пока нет.
-- Аутентификация минимальная: нет восстановления пароля, подтверждения email, ограничения числа попыток входа и ролей. Защищённых маршрутов пока нет: `/api/documents/extract` доступен без входа. `AUTH_SECRET` по умолчанию подходит только для локального запуска.
-- Smoke-проверка охватывает двадцать HTTP-запросов, включая доступность MongoDB, извлечение текста из PDF, аутентификацию и демо-анализ до этапа сборки пунктов. Подразделения, сопоставление функций, отклонения и заключение она не проверяет, потому что эти этапы ещё не реализованы.
-- Извлечение обрабатывает один файл за запрос; результаты не сохраняются.
-- Извлечение текста: сканированные PDF без текстового слоя не распознаются (OCR нет, возвращается предупреждение); формат `.doc` не поддерживается — нужно пересохранить в `.docx`. Автонумерация Word учитывает формат, шаблон и переопределения уровня и начала нумерации (`lvlOverride`/`startOverride`); специальные правила перезапуска `lvlRestart` пока не поддержаны. Кириллические PDF в автотестах не проверялись.
-- Сверка функций с законодательством (опция O1) не реализована. Нормативная база из трёх законов лежит в `services/backend/data/regulatory/`, но backend её пока не загружает. Сравнение со структурами других операторов (опция O2) не делается: данных об этих структурах нет.
-- Теги контейнерных образов не закреплены по digest; `caddy:2-alpine` также не фиксирует minor-версию.
+- Модель обязательна: без ключа и имени модели анализ не запускается (`503 llm_unavailable`), интерфейс и остальные маршруты работают.
+- Все выводы рекомендательные. Судья-модель может не распознать сильно переформулированную функцию, тогда она попадёт в «возможную потерю»; в контрольных запусках помимо трёх ожидаемых потерь отмечалось ещё несколько пунктов ред. 8 (например, из раздела 12), которые нужно проверить вручную. Поэтому карточки и заключение всегда содержат «требует проверки ответственным сотрудником».
+- Семантические кандидаты по эмбеддингам выключены по умолчанию (у ключа команды нет доступа к моделям эмбеддингов); используется лексический запасной путь, предусмотренный docs/TASK.md §5. При появлении доступа достаточно задать `EMBEDDING_MODEL`.
+- Опциональные требования ТЗ: сверка функций с законодательством (O1) не реализована — нормативная база из трёх законов лежит в `services/backend/data/regulatory/`, но backend её пока не загружает; сравнение со структурами других операторов (O2) не делается, данных об этих структурах нет. Рекомендации (O3) — раздел заключения, который пишет модель по выводам.
+- Разметка функций делается моделью, поэтому количество функций и второстепенных выводов (`MOVED`, `OVERLAP`) от запуска к запуску немного меняется; контрольные находки воспроизводились во всех проверочных запусках.
+- Анализ занимает 2–4 минуты на пару документов по 25 страниц; для больших комплектов время растёт линейно. Кэша ответов модели нет.
+- Сканированные PDF без текстового слоя не распознаются (OCR нет); `.doc` не поддерживается — пересохраните в `.docx`.
+- Аутентификация минимальная (нет восстановления пароля, ограничения попыток, ролей); API анализа открыт намеренно, чтобы жюри и smoke-скрипт запускали сценарий без аккаунта. `AUTH_SECRET` по умолчанию годится только для локального запуска.
+- Теги образов не закреплены по digest; `caddy:2-alpine` не фиксирует minor-версию.
 
 ## Развёрнутая версия
 
-В [AGENTS.md](AGENTS.md) указан адрес VM: [демонстрационная версия](https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com). Там же описано автоматическое обновление после push в `main`.
-
-Доступность адреса и состояние удалённого деплоя этой документацией не подтверждаются: скрипта развёртывания VM в репозитории нет. Локальный запуск остаётся самостоятельным способом проверки.
+Адрес VM из [AGENTS.md](AGENTS.md): [https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com](https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com). После push в `main` VM пересобирает те же образы из того же `docker-compose.yml`; ключ модели задан в её окружении, поэтому демо-анализ там доступен без настройки. Проверить: `BASE_URL=https://hackalem-ai-wg.germanywestcentral.cloudapp.azure.com ./scripts/smoke.sh`. Локальный запуск остаётся основным способом проверки.
 
 ## Доступ для жюри
 
-Для запуска текущей заготовки не нужны аккаунты команды, платные подписки или API-ключи. Нужны доступ к репозиторию и возможность скачать контейнерные образы.
+Для запуска нужны только репозиторий и Docker. Для основного сценария (анализ) нужен ключ OpenAI-совместимого API с доступом к чат-модели в режиме JSON: впишите в `.env` значения `OPENAI_API_KEY` и `LLM_MODEL` (команда проверяла на `gpt-5.6-terra`). Ключ команды в репозитории отсутствует; способ передачи ключа жюри команда указывает при сдаче работы. Без ключа доступны интерфейс, извлечение текста, аутентификация и 18 проверок smoke-скрипта.
 
-Демо-аккаунт для входа в интерфейс (создаётся автоматически при старте backend, локально и на развёрнутой версии):
+Демо-аккаунт для входа в интерфейс (создаётся при старте backend, локально и на VM):
 
 | Поле | Значение |
 |---|---|
 | Email (логин) | `demo@example.com` |
 | Пароль | `demo12345` |
 
-Аккаунт синтетический и не связан ни с какими внешними сервисами. При желании можно зарегистрировать любой другой аккаунт на стартовой странице. Доступ к будущим AI-функциям пока не настроен, поскольку сами функции отсутствуют.
+Аккаунт синтетический. API анализа (`/api/analyses`) доступен без входа.
 
 ## Надёжность и безопасность
 
-Все пять сервисов имеют healthcheck и политику перезапуска `unless-stopped`. Наружу публикуются только порты Caddy. MongoDB не имеет опубликованного порта; аутентификация базы в текущем Compose не настроена. Backend принимает JSON не больше 1 МБ и один загружаемый файл не больше `MAX_UPLOAD_MB` (по умолчанию 20 МБ); extractor повторно проверяет размер, отклоняет архивы с распакованным размером больше 200 МБ, PDF больше 300 страниц и определяет формат по содержимому, а не по расширению. Разбор выполняется в отдельном потоке, поэтому `/health` extractor отвечает и во время обработки большого документа. Backend скрывает заголовок `X-Powered-By` и отвечает на ошибки JSON-объектом без трассировки стека. Проверка `/api/health` выполняет `ping` MongoDB с таймаутом 2 с и возвращает `503`, если база недоступна; при недоступной базе на старте backend завершается и перезапускается политикой `unless-stopped`.
+Все пять сервисов имеют healthcheck и политику `unless-stopped`; наружу опубликованы только порты Caddy. Backend принимает JSON не больше 1 МБ, файлы не больше `MAX_UPLOAD_MB`, проверяет тип файла по содержимому до постановки анализа в очередь, скрывает `X-Powered-By` и отвечает на ошибки JSON-объектом `{"error":{"code","message"}}` без трассировки. Extractor отклоняет архивы больше 200 МБ в распакованном виде и PDF больше 300 страниц; разбор идёт в отдельном потоке.
 
-Аутентификация: пароли хранятся как `scrypt`-хеши (соль 16 байт, ключ 64 байта, сравнение за постоянное время) и никогда не возвращаются API. Сессия — JWT HS256 в cookie `hackalem_session` с флагами `HttpOnly`, `SameSite=Lax` и `Secure` за HTTPS (backend доверяет `X-Forwarded-Proto` от Caddy, других входов у него нет). Тела запросов проверяются строгими zod-схемами (лишние поля отклоняются), в фильтры MongoDB попадают только приведённые к строке значения.
+Вызовы модели: один модуль, таймаут 90 с, два повтора с задержкой на сетевые ошибки и 429/5xx, не больше 6 параллельных вызовов, режим JSON, проверка каждого ответа zod-схемой с одним повторным запросом при невалидном ответе; отказ провайдера (401/403/404/5xx) превращается в понятную ошибку анализа. Текст документов передаётся модели как данные внутри блока `<document>` с указанием не выполнять содержащиеся в нём инструкции; модель возвращает только идентификаторы пунктов и метки, цитаты берутся из текста пункта кодом и проверяются как подстрока. Ссылки в заключении, не относящиеся к выводам, удаляются кодом. Ключи читаются только на сервере и в бандл frontend не попадают.
 
-Файлы `.env`, `.env.*` (кроме `.env.example`), `*.pem` и `*.key` исключены через `.gitignore`. Загруженные документы обрабатываются в памяти и не сохраняются на диск или в базу.
+Аутентификация: `scrypt`-хеши паролей, JWT HS256 в cookie `HttpOnly; SameSite=Lax; Secure` за HTTPS, строгие zod-схемы тел запросов, в фильтры MongoDB попадают только приведённые значения. `.env`, `.env.*` (кроме `.env.example`), `*.pem`, `*.key` исключены из Git.
 
 ## Сторонние и заранее подготовленные материалы
 
-- Подготовленный до мероприятия шаблон окружения обозначен в истории Git коммитом `a6d411c` (`chore: development environment template (prepared before the event)`). В него входят инструкции агентов, Compose, Caddyfile, шаблоны документации и скрипты проверки.
-- Сторонние компоненты текущего окружения: Docker/Compose, Caddy, MongoDB, curl и их контейнерные образы. Файлы лицензий этих компонентов в репозиторий не включены; условия поставки определяются соответствующими компонентами и образами.
-- Прикладные библиотеки backend: `express` 5 и официальный драйвер `mongodb` 6 для Node.js (устанавливаются при сборке образа из `package-lock.json`).
-- Библиотека backend: multer 2 (MIT) — приём multipart-загрузки файлов.
-- Библиотеки backend: jsonwebtoken 9 (MIT) — подпись и проверка JWT сессии; zod 4 (MIT) — валидация входных данных.
-- Библиотеки frontend: vue 3 и vite 6 (MIT); шрифты Nunito Sans и PT Serif из пакетов @fontsource/nunito-sans и @fontsource/pt-serif 5.3 (SIL Open Font License 1.1). Иконки в `src/Icon.vue` нарисованы в стиле Lucide и написаны вручную, без библиотеки. Логотип OrgScope — условный знак, а не логотип Казахтелекома.
-- Библиотеки сервиса extractor: FastAPI, uvicorn, python-multipart (BSD/MIT), python-docx (MIT), pdfplumber и pdfminer.six (MIT), openpyxl (MIT), xlrd (BSD), pytest (MIT), httpx (BSD). Полный список транзитивных зависимостей — в `services/extractor/uv.lock`.
-- Тексты трёх законов РК в `services/backend/data/regulatory/` взяты с adilet.zan.kz (ИПС «Әділет»). Подробности и правовой статус приведены в разделе «Данные и интеграции». Выгрузку сделал заранее подготовленный инструмент команды: корпус НПА, собранный до мероприятия. Код этого инструмента в репозиторий не входит.
-- Два предоставленных пользователем обезличенных PDF включены без изменений; происхождение и контрольные суммы приведены в разделе «Данные и интеграции». Внешние модели не добавлены.
-- В репозитории есть инструкции для OpenAI Codex и Claude Code. Эта редакция документации подготовлена с помощью OpenAI Codex. Сервис extractor, маршрут извлечения документов, подключение MongoDB и аутентификация написаны с помощью Claude Code.
+- Подготовленный до мероприятия шаблон окружения обозначен коммитом `a6d411c` (`chore: development environment template (prepared before the event)`): инструкции агентов, Compose, Caddyfile, шаблоны документации и скрипты проверки. Всё прикладное (extractor, конвейер, API, интерфейс) написано 23.09.2026 в этом репозитории.
+- Сторонние компоненты: Docker/Compose, Caddy, MongoDB, curl, python:3.12-slim и их образы.
+- Библиотеки backend: express 5 (MIT), mongodb 6 (Apache-2.0), multer 2 (MIT), jsonwebtoken 9 (MIT), zod 4 (MIT), openai 7 (Apache-2.0).
+- Библиотеки frontend: vue 3, vite 6, marked 18 (MIT); шрифты Nunito Sans и PT Serif из @fontsource (SIL OFL 1.1). Иконки в `src/Icon.vue` нарисованы вручную в стиле Lucide. Логотип OrgScope — условный знак, не логотип Казахтелекома.
+- Библиотеки extractor: FastAPI, uvicorn, python-multipart, python-docx, pdfplumber/pdfminer.six, openpyxl, xlrd, pytest, httpx; полный список — в `services/extractor/uv.lock`.
+- Модель: `gpt-5.6-terra` (OpenAI) через официальный SDK; другие модели не используются. Два предоставленных пользователем обезличенных PDF включены без изменений (см. «Данные и интеграции»).
+- Тексты трёх законов РК в `services/backend/data/regulatory/` взяты с adilet.zan.kz (ИПС «Әділет»); подробности и правовой статус — в разделе «Данные и интеграции». Выгрузку сделал заранее подготовленный инструмент команды: корпус НПА, собранный до мероприятия; код этого инструмента в репозиторий не входит.
+- Инструменты: в репозитории есть инструкции для OpenAI Codex, Claude Code и Cursor. Extractor, сборка пунктов, API анализа и smoke-проверка написаны с помощью Claude Code и OpenAI Codex; модуль модели, этапы 2–5 конвейера, тесты сопоставления, экран результатов и эта редакция README — с помощью Claude Code; дизайн-система и экран входа — с помощью Cursor.
 
 ## Команда
 
-Название команды — Optimus (из имени репозитория). Состав команды и распределение продуктовых задач в текущих файлах не зафиксированы. Авторство изменений доступно в истории Git.
+Команда Optimus, три участника; авторы коммитов в истории Git — `Khazretsultan`, `kairadio`, `bolatashim`. Распределение: extractor, сборка пунктов, API анализа и smoke — Khazretsultan; модуль модели, этапы 2–5 конвейера, экран результатов, README — kairadio; дизайн-система и экран входа — bolatashim.

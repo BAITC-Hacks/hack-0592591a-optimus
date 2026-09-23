@@ -3,6 +3,7 @@ import { connectDb, pingDb, closeDb } from "./db.js";
 import { ensureDemoUser } from "./seed.js";
 
 import { HttpError } from "./httpError.js";
+import { llmConfigured } from "./llm.js";
 import { analyses } from "./routes/analyses.js";
 import { auth } from "./routes/auth.js";
 import { documents } from "./routes/documents.js";
@@ -21,6 +22,7 @@ app.get(["/health", "/api/health"], async (_req, res) => {
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? "ok" : "degraded",
     db: dbOk ? "ok" : "unavailable",
+    llm: llmConfigured() ? "configured" : "missing",
   });
 });
 

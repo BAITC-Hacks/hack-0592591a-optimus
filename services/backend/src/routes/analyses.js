@@ -8,7 +8,8 @@ import { Router } from "express";
 
 import { getDb } from "../db.js";
 import { HttpError } from "../httpError.js";
-import { runPipeline } from "../pipeline/index.js";
+import { assertLlmConfigured } from "../llm.js";
+import { runPipeline } from "../pipeline/run.js";
 import { sniffFileType, uploadFields } from "../upload.js";
 
 const ANALYSIS_ID = /^a_[0-9a-f]{12}$/;
@@ -19,6 +20,7 @@ const SIDE_FIELDS = { before: "before", after: "after", regulations: "regulation
 export const analyses = Router();
 
 async function startAnalysis(files, source) {
+  assertLlmConfigured(); // 503 llm_unavailable before anything is queued (docs/TASK.md §7)
   const id = `a_${randomBytes(6).toString("hex")}`;
   const now = new Date();
   await getDb().collection("analyses").insertOne({

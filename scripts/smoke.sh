@@ -90,25 +90,63 @@ fi
 check "demo account login"     '"email":"demo@example.com"' \
   -X POST "$BASE_URL/api/auth/login" "${JSON[@]}" -d '{"email":"demo@example.com","password":"demo12345"}'
 
-# --- main scenario: demo analysis (docs/TASK.md §2, §7) ------------------------
-# Runs the bundled ред. 8 / ред. 9 pair, polls until done, checks a clause and its source.
-# Only the stages listed in "pipeline.implemented" run so far; see README «Ограничения».
+# --- main scenario: demo analysis (docs/TASK.md §2, §7, §9) --------------------
+# Runs the bundled ред. 8 / ред. 9 pair through the whole pipeline, polls until
+# done (2–4 minutes with a real model) and checks the control set: created units,
+# the lost function 5.6.2 and the duplicate 5.4.3 / 5.5.8, each with its source.
+# Without a configured model (.env.example as is) the API must answer 503
+# llm_unavailable; the control-set checks are then reported as skipped.
 report() { # name, ok(0/1), output
   if [ "$2" -eq 0 ]; then echo "  ok    $1"; pass=$((pass + 1)); else echo "  FAIL  $1"; echo "        got: ${3:0:300}"; fail=$((fail + 1)); fi
 }
-out="$("${CURL[@]}" -w ' %{http_code}' -X POST "$BASE_URL/api/analyses/demo" 2>&1)"
-ANALYSIS_ID="$(grep -oE 'a_[0-9a-f]{12}' <<<"$out" | head -1)"
-[ -n "$ANALYSIS_ID" ] && grep -q ' 202$' <<<"$out"; report "demo analysis queued (202)" $? "$out"
-status=""
-for _ in $(seq 1 60); do
-  out="$("${CURL[@]}" "$BASE_URL/api/analyses/$ANALYSIS_ID" 2>&1)"
-  status="$(grep -oE '"status":"[a-z]+"' <<<"${out:0:400}" | head -1)"
-  case "$status" in *done*|*failed*) break ;; esac
-  sleep 1
-done
-[ "$status" = '"status":"done"' ]; report "demo analysis done" $? "${out:0:300}"
-grep -q '"clause_id":"5.6.2","parent_id":"5.6"' <<<"$out" && grep -q '"ref":"п. 5.6.2, стр. 10, строки 11–12"' <<<"$out"
-report "demo clause 5.6.2 with its source" $? "$(grep -o '"pipeline":{[^}]*}' <<<"$out")"
+health="$("${CURL[@]}" "$BASE_URL/api/health" 2>&1)"
+if grep -q '"llm":"configured"' <<<"$health"; then
+  out="$("${CURL[@]}" -w ' %{http_code}' -X POST "$BASE_URL/api/analyses/demo" 2>&1)"
+  ANALYSIS_ID="$(grep -oE 'a_[0-9a-f]{12}' <<<"$out" | head -1)"
+  [ -n "$ANALYSIS_ID" ] && grep -q ' 202$' <<<"$out"; report "demo analysis queued (202)" $? "$out"
+  status=""
+  for _ in $(seq 1 "${ANALYSIS_TIMEOUT:-360}"); do
+    out="$("${CURL[@]}" "$BASE_URL/api/analyses/$ANALYSIS_ID" 2>&1)"
+    status="$(grep -oE '"status":"[a-z]+"' <<<"${out:0:400}" | head -1)"
+    case "$status" in *done*|*failed*) break ;; esac
+    sleep 2
+  done
+  [ "$status" = '"status":"done"' ]; report "demo analysis done" $? "$(grep -o '"error":{[^}]*}' <<<"$out")"
+  grep -q '"clause_id":"5.6.2","parent_id":"5.6"' <<<"$out" && grep -q '"ref":"п. 5.6.2, стр. 10, строки 11–12"' <<<"$out"
+  report "demo clause 5.6.2 with its source" $? "${out:0:300}"
+  py='import json,sys
+d=json.load(sys.stdin); f=d.get("findings",[]); u={x["unit_id"]:x for x in d.get("units",[])}
+created={ (u[c["after"]].get("abbr") or u[c["after"]]["name"]) for c in d.get("unit_changes",[]) if c["status"]=="created"}
+reorg=[c for c in d.get("unit_changes",[]) if c["status"]=="reorganized"]
+loss=[x for x in f if x["type"]=="POTENTIAL_LOSS" and any(c["clause_id"]=="5.6.2" and c["side"]=="before" for c in x["citations"])]
+dup=[x for x in f if x["type"]=="POTENTIAL_DUPLICATION" and {c["clause_id"] for c in x["citations"]}=={"5.4.3","5.5.8"}]
+conf=[x for x in f if x["type"]=="POTENTIAL_CONFLICT" and any(c["clause_id"]=="5.5.2" for c in x["citations"])]
+quoted=all(c.get("quote") for x in f for c in x["citations"])
+print("created", "ok" if {"ДИТААД","ДОА"}<=created else "FAIL "+str(sorted(created)))
+print("reorganized", "ok" if reorg else "FAIL none")
+print("loss", "ok" if loss and loss[0]["citations"][0]["quote"].startswith("формировать группы контроля качества") else "FAIL")
+print("dup", "ok" if dup else "FAIL")
+print("conflict", "ok" if conf else "FAIL")
+print("quotes", "ok" if quoted and d["stats"].get("dropped_unverified")==0 else "FAIL")
+print("conclusion", "ok" if "рекомендательный характер" in d.get("conclusion_md","") else "FAIL")'
+  verdict="$(printf '%s' "$out" | docker run --rm -i python:3.12-slim python -c "$py" 2>&1)"
+  for key in created reorganized loss dup conflict quotes conclusion; do
+    line="$(grep -E "^$key " <<<"$verdict")"
+    case "$key" in
+      created)      name="control set: units ДИТААД and ДОА created" ;;
+      reorganized)  name="control set: a unit reorganized into successors" ;;
+      loss)         name="control set: POTENTIAL_LOSS at до п. 5.6.2 with its quote" ;;
+      dup)          name="control set: POTENTIAL_DUPLICATION после п. 5.4.3 / 5.5.8" ;;
+      conflict)     name="control set: POTENTIAL_CONFLICT cites после п. 5.5.2" ;;
+      quotes)       name="every finding has a verified quote" ;;
+      conclusion)   name="conclusion carries the advisory disclaimer" ;;
+    esac
+    grep -q " ok$" <<<"$line"; report "$name" $? "$line"
+  done
+else
+  echo "  skip  demo analysis and control set: LLM not configured (set OPENAI_API_KEY and LLM_MODEL in .env)"
+  check "demo analysis without a model answers 503 llm_unavailable" '"llm_unavailable"' -X POST "$BASE_URL/api/analyses/demo"
+fi
 out="$(echo "plain text" | "${CURL_STDIN[@]}" -o /dev/null -w '%{http_code}' -F "before=@-;filename=notes.txt" -F "after=@-;filename=notes.txt" "$BASE_URL/api/analyses" 2>&1)"
 [ "$out" = "415" ]; report "analysis rejects unsupported type (415)" $? "$out"
 out="$(tiny_pdf | "${CURL_STDIN[@]}" -w ' %{http_code}' -F "before=@-;filename=order.pdf" "$BASE_URL/api/analyses" 2>&1)"
