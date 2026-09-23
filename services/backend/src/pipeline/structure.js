@@ -87,7 +87,7 @@ export async function extractUnits(doc, llm) {
       side: doc.side,
       doc_id: doc.doc_id,
       key,
-      name: unit.name,
+      name: unit.name.trim().replace(/^./, (ch) => ch.toUpperCase()),
       abbr,
       kind: unit.kind,
       parent: unit.parent ?? null,

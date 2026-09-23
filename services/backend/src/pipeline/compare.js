@@ -172,6 +172,8 @@ function makeFinding(list, data) {
 }
 
 const ownersText = (owners) => (owners.length ? owners.join(", ") : "исполнитель не указан");
+const STEP_RU = { exact: "точное совпадение", jaccard: "лексическое сходство", embeddings: "семантические кандидаты", lexical: "лексические кандидаты", judge: "оценка модели" };
+const stepsText = (steps) => steps.map((s) => STEP_RU[s] ?? s).join(" → ");
 
 /** Deterministic rules of §5 on top of the matches. Conflict candidates go through the LLM. */
 export async function detectFindings({ before, after, matches, units, vectors, llm, beforeClauses = [], afterClauses = [] }) {
@@ -188,7 +190,7 @@ export async function detectFindings({ before, after, matches, units, vectors, l
         severity: "high",
         units: fn.owners,
         title: `Возможная потеря функции: ${fn.canonical}`,
-        explanation: `Закреплено в документах «до» (${fn.ref}) за ${ownersText(fn.owners)}. В документах «после» эквивалентной обязанности не найдено (${m.steps.join(" → ")}). ${REVIEW_NOTE}`,
+        explanation: `Закреплено в документах «до» (${fn.ref}) за ${ownersText(fn.owners)}. В документах «после» эквивалентной обязанности не найдено (проверено: ${stepsText(m.steps)}). ${REVIEW_NOTE}`,
         citations: [citation(fn)],
       });
     } else if (m.relation === "moved") {
@@ -198,7 +200,7 @@ export async function detectFindings({ before, after, matches, units, vectors, l
         severity: "low",
         units: [...new Set([...fn.owners, ...target.owners])],
         title: `Функция перераспределена: ${fn.canonical}`,
-        explanation: `«До» — ${ownersText(fn.owners)} (${fn.ref}); «после» — ${ownersText(target.owners)} (${target.ref}). Сопоставление: ${m.basis === "partial" ? "частичное" : "то же содержание"}, ${m.steps.at(-1)}. ${REVIEW_NOTE}`,
+        explanation: `«До» — ${ownersText(fn.owners)} (${fn.ref}); «после» — ${ownersText(target.owners)} (${target.ref}). Сопоставление: ${m.basis === "partial" ? "частичное" : "то же содержание"} (${STEP_RU[m.steps.at(-1)] ?? m.steps.at(-1)}). ${REVIEW_NOTE}`,
         citations: [citation(fn), citation(target)],
       });
     }
