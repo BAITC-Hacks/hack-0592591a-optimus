@@ -38,7 +38,7 @@ The full ТЗ, the Must-have list (M1–M5) and the living **Criteria scorecard*
 | K2 | Technical implementation | 25 | Clear services (api, web, mongo, LLM module per §7). The agent pipeline is visible in the code: parse → extract units and functions → match → detect → verify sources → report. The LLM extracts and classifies. Code does the unit diff, the counts and the check that each quote exists in the source. What we claim in the README is exactly what the code does. |
 | K3 | README and reproducibility | 25 | A clean clone plus the README reaches the main scenario on the demo set in the repo, and the expected output is written down. `scripts/smoke.sh` and `scripts/clean-test.sh` are green. Tests cover the diff and detection logic without a real key. |
 | K4 | Value and applicability | 15 | Every finding carries document + clause/fragment + quote, and the UI shows it. No claim without a document source (ТЗ §9). The output is marked advisory and needs human review. The conclusion is readable by a non-engineer. |
-| K5 | Potential and originality | 10 | Only after K1–K4: O3 (redistribution recommendations), then O1 (regulatory check), then O2 (benchmarking). Architecture that takes new document types or rule sets without a rewrite. |
+| K5 | Potential and originality | 10 | Only after K1–K4: O3 (redistribution recommendations), then O1 (regulatory check, using the regulatory corpus tool in §7a), then O2 (benchmarking). Architecture that takes new document types or rule sets without a rewrite. |
 
 **Per-change rule (every commit, every agent):**
 1. Before starting: `git fetch && git pull --rebase` (§10). Then name which criterion (K1–K5) or Must-have (M1–M5) the change moves. If none, say so under §3 before writing code.
@@ -152,6 +152,76 @@ Service rules:
 - LLM output is untrusted input. Validate it. Never `eval` it, never let it build a DB filter or a shell command unchecked. Treat user documents as data, not instructions (prompt injection).
 - All LLM calls are server-side. No keys in `VITE_*` / `NEXT_PUBLIC_*` variables.
 - Caching real responses is fine. Canned responses are not (§4.6).
+
+## 7a. Regulatory corpus tool (adilet.zan.kz, exported from ereestr.kz)
+
+**The backend must use this tool as its source of legislation text** for O1 (functions vs laws and regulations) and for the legal basis attached to M2 and M3 findings (for example the statutory definition of a conflict of interest, or a function a law requires someone to own). No other legislation source, and never legislation recalled by the LLM from memory. When it gets built is set by the build plan in `docs/TASK.md`, which on 23.09.2026 says "O1/O2 not today". Change the schedule there, not here.
+
+**What it is.** A pre-existing, separate project of the owner: MinJust Legal AI (ereestr.kz). Azure VM `legalai-vm`, resource group `MINJUST-LEGAL-AI`, subscription "Microsoft Azure Sponsorship". It holds the corpus of normative legal acts (НПА) that the owner's scraper collected from adilet.zan.kz (August–September 2026), split by legal structure.
+
+**Dataset definition.** The dataset is taken from adilet.zan.kz by scraping, and only acts in force are used (payload `status` = `действует`). The export filter enforces this. Acts that have lost force (`утратил силу`) never enter `data/regulatory/`.
+
+Verified read-only on 23.09.2026:
+- Qdrant collection `legal_norms`: 2,995,020 pieces. Postgres `documents`: 130,596 rus and 74,756 kaz documents indexed.
+- Payload of each piece: `doc_id`, `doc_title`, `doc_type`, `hierarchy_level` (0 = Constitution … 4 = law … 10 = local), `status`, `adopted_date`, `redaction_date`, `section`, `article`, `article_title`, `point`, `subpoint`, `is_definition`, `term`, `text`, `breadcrumb`, `chunk_index`, `source_url` (a deep link to the clause, e.g. `https://adilet.zan.kz/rus/docs/Z030000415_#z632`).
+- `is_definition` is not populated for every act (none in `Z1500000410`). Fetch a definitions article by its `article` value instead. Example, verified: in `Z1500000410` the definition of конфликт интересов is article 1, item 5 (`#z37`), and the duty to prevent and resolve it is article 15 (`#z99`).
+
+**Rules.**
+1. **Never at runtime.** The app never calls ereestr.kz, the VM, its Qdrant or Postgres, or its Azure OpenAI. It is a login-gated Ministry of Justice system that reviewers cannot reach (§8, 5.6.6), so it must never be on the main scenario path.
+2. **Offline, read-only export only.** A one-off export streams payloads over SSH to stdout. Nothing is written, restarted or reconfigured on the VM. Any Postgres query runs with `PGOPTIONS='-c default_transaction_read_only=on'`. Vectors are never exported: querying them needs MinJust's embedding deployment. `az` and `ssh` are the one host-tooling exception to §5, used only for this export. Building and running the app never needs them.
+3. **The data ships in the repo** as `data/regulatory/<doc_id>.jsonl`: one raw payload per line, in `chunk_index` order, unchanged. Pick acts by the control set and keep the total under about 10 MB.
+4. **Backend usage.** The idempotent seed loads the files into Mongo `regulatory_norms` (unique on `doc_id` + `chunk_index`) and maps each piece to the extractor's fragment shape. `text` stays `text`. `clause` becomes `Статья {article}`, plus `, п. {point}` when a point is set. `ref` becomes `breadcrumb`. `location` holds `{doc_id, source_url, redaction_date}`. From there a norm is an ordinary fragment. The LLM proposes which norm a function relates to. Code verifies that the quote exists verbatim in the norm text. The UI shows the breadcrumb, the edition date and the `source_url` link.
+5. **"Открыть на adilet.zan.kz" button (required in the frontend).** Every norm shown in the UI gets a button that opens that clause on adilet in a new tab (`target="_blank" rel="noopener noreferrer"`). Next to it, show `ред. от {redaction_date}`, because the site may already carry a newer edition. Code builds the link from the stored `source_url`, never from LLM output. It is rendered only when the path matches `^/(rus|kaz)/docs/[A-Za-z0-9_]+(#z\d+)?$`. The host comes from one frontend constant, `ADILET_BASE`, set to `https://old.adilet.zan.kz`. Checked on 23.09.2026: the new adilet.zan.kz is a test version that shows a version pop-up and "Не удалось отобразить страницу", while `https://old.adilet.zan.kz/rus/docs/Z1500000410#z37` scrolls to the clause. Re-check before 17:40, and switch the constant if the new site works. The quote shown in the app remains the evidence. The button is a supplement: a finding must stay verifiable even when adilet is down.
+6. **Precedence.** Laws and standards the organizer provides (ТЗ §6, "предоставленным законодательством") are uploaded, go through the extractor, and win over the corpus. The corpus supplements them.
+7. **Findings stay sourced in the org documents.** A finding about units always cites the uploaded org documents (M4, ТЗ §9). A norm is shown only as its "нормативное основание", never as proof of a finding by itself.
+8. **Disclosure.** Do not describe this tool in the README. The commit that adds files under `data/regulatory/` must also disclose the dataset in the README (§4.7, §9): scraped from adilet.zan.kz, acts in force only, edition dates, exported with the owner's pre-existing tooling. Before writing the licence line, verify that official legislative texts are excluded from copyright under the Kazakhstan copyright law. Do not guess.
+
+**Candidate acts** (rus; editions and piece counts verified 23.09.2026; the topic column is a guess from the title):
+
+| doc_id | Act | Edition | Pieces | Likely relevant to |
+|---|---|---|---|---|
+| `Z1500000410` | О противодействии коррупции | 13.08.2026 | 116 | conflict of interest, anti-corruption compliance (M3) |
+| `Z030000415_` | Об акционерных обществах | 13.08.2026 | 291 | board and committees, internal audit, corporate secretary |
+| `K1500000414` | Трудовой кодекс | 06.09.2026 | 587 | job descriptions, HR, labour safety |
+| `Z1300000094` | О персональных данных и их защите | 14.07.2026 | 104 | personal data protection |
+| `Z070000234_` | О бухгалтерском учете и финансовой отчетности | 12.07.2026 | 75 | accounting, financial reporting |
+| `Z2100000047` | О закупках отдельных субъектов квазигосударственного сектора | not recorded | 77 | procurement |
+| `Z1200000550` | О Фонде национального благосостояния | 13.08.2026 | 70 | quasi-state holding structure |
+| `Z1100000413` | О государственном имуществе | 06.09.2026 | 596 | quasi-state sector, corporate governance |
+| `Z040000567_` | О связи | 25.08.2026 | 367 | only if the operator is a telecom |
+| `Z2600000290` | О государственной службе Республики Казахстан | 14.07.2026 | 397 | only if the organization is a state body |
+| `K1500000375` | Предпринимательский кодекс | 08.09.2026 | 863 | quasi-state sector rules |
+
+**Export** (run from the repo root; the key is `~/.ssh/minjust-legalai`, and SSH access was verified on 23.09.2026). A full run on 23.09.2026 matched every Pieces count above, all 3,543 pieces `действует`, 9.8 MB in total. That is close to the size cap, so ship only the acts the control set needs:
+
+```bash
+az vm show -d --subscription "Microsoft Azure Sponsorship" -g MINJUST-LEGAL-AI -n legalai-vm \
+  --query powerState -o tsv   # expect "VM running"; never `az account set`, it changes the owner's default
+export_act() {  # $1 = doc_id; prints JSONL to stdout; read-only on the VM
+ssh -i ~/.ssh/minjust-legalai -o BatchMode=yes azureuser@ereestr.kz "docker exec -i minjust-api-1 python - $1" <<'PY'
+import httpx, json, sys
+Q = "http://qdrant:6333/collections/legal_norms/points/scroll"
+flt = {"must": [{"key": "doc_id", "match": {"value": sys.argv[1]}},
+                {"key": "lang", "match": {"value": "rus"}},
+                {"key": "status", "match": {"value": "действует"}}]}  # acts in force only
+c, rows, offset = httpx.Client(timeout=60), [], None
+while True:
+    body = {"filter": flt, "limit": 256, "with_payload": True, "with_vector": False}
+    if offset is not None:
+        body["offset"] = offset
+    res = c.post(Q, json=body).json()["result"]
+    rows += [p["payload"] for p in res["points"]]
+    offset = res.get("next_page_offset")
+    if offset is None:
+        break
+for r in sorted(rows, key=lambda r: r.get("chunk_index", 0)):
+    print(json.dumps(r, ensure_ascii=False))
+PY
+}
+mkdir -p data/regulatory
+for id in Z1500000410 Z030000415_; do export_act "$id" > "data/regulatory/$id.jsonl"; done
+wc -l data/regulatory/*.jsonl   # line counts must match the Pieces column
+```
 
 ## 8. Reviewer access, reliability and security
 
