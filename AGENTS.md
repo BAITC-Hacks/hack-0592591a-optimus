@@ -28,13 +28,31 @@ Regulation-level gates apply to every task on top of the ТЗ. Each is binary: f
 
 Demo Day (finalists only) is judged on value (25), result and quality (20), innovation (15), growth potential (20), presentation and Q&A (20). These are indicative; the jury's collective judgment overrides the arithmetic. Keep the UI demo-worthy, but never at the cost of the gates.
 
+## 2a. Our task's criteria gate (Task 1: org-structure and function analysis agent)
+
+The full ТЗ, the Must-have list (M1–M5) and the living **Criteria scorecard** are in `docs/TASK.md`. Every change is judged against these five criteria:
+
+| ID | Criterion | Pts | What "met" means for this project (check against it) |
+|---|---|---|---|
+| K1 | Fit to task and working | 25 | The main scenario runs end-to-end in Docker. The user uploads "before" and "after" sets (Word/PDF/Excel), and the agent: marks units as created, kept or reorganized (M1); flags lost functions (M2); flags duplicates and conflicts of interest (M3); cites a source for each finding (M4); shows a conclusion (M5). The shipped control set contains a reorganization, a lost function and a duplicate, and all three are detected with correct sources. |
+| K2 | Technical implementation | 25 | Clear services (api, web, mongo, LLM module per §7). The agent pipeline is visible in the code: parse → extract units and functions → match → detect → verify sources → report. The LLM extracts and classifies. Code does the unit diff, the counts and the check that each quote exists in the source. What we claim in the README is exactly what the code does. |
+| K3 | README and reproducibility | 25 | A clean clone plus the README reaches the main scenario on the demo set in the repo, and the expected output is written down. `scripts/smoke.sh` and `scripts/clean-test.sh` are green. Tests cover the diff and detection logic without a real key. |
+| K4 | Value and applicability | 15 | Every finding carries document + clause/fragment + quote, and the UI shows it. No claim without a document source (ТЗ §9). The output is marked advisory and needs human review. The conclusion is readable by a non-engineer. |
+| K5 | Potential and originality | 10 | Only after K1–K4: O3 (redistribution recommendations), then O1 (regulatory check), then O2 (benchmarking). Architecture that takes new document types or rule sets without a rewrite. |
+
+**Per-change rule (every commit, every agent):**
+1. Before starting: `git fetch && git pull --rebase` (§10). Then name which criterion (K1–K5) or Must-have (M1–M5) the change moves. If none, say so under §3 before writing code.
+2. Before committing: confirm the change does not break K1's main scenario or K3's clean-clone run, and that every new finding type still carries a verified source (K4).
+3. In the same commit, update the Criteria scorecard in `docs/TASK.md` if a status changed. Only mark ✅ after seeing it work in Docker (§3). If README claims changed, update the README too (§9).
+4. Put the criterion IDs in the commit body, for example `Criteria: K1 M2, K4`.
+
 ## 3. Think first, then build. Do not blindly agree
 
 You are a senior engineer on this team, not an order-taker. The team explicitly wants you to challenge a request when you see a better way. Agreement is only useful when it is earned.
 
 Before starting any non-trivial request, check it against four questions:
 
-1. Does it serve a gate (§2), a ТЗ requirement, or a ТЗ scoring criterion? If not, say so.
+1. Does it serve a gate (§2), a ТЗ requirement, or a ТЗ scoring criterion (K1–K5, M1–M5 in §2a)? If not, say so.
 2. Is there a simpler, faster or more robust way to reach the same outcome?
 3. What does it cost in minutes, and how much clock is left before 18:00?
 4. Can it break the main scenario, the clean-clone run, reviewer access, or a hard rule (§4)?
@@ -172,7 +190,9 @@ Also retain **Доступ для жюри**, **Надёжность и безо
 
 ## 10. Git workflow for 3 people and 5 hours
 
-- Trunk-based. Small commits straight to `main`, or branches that live under an hour. `git pull --rebase` before every push (rebasing your own *unpushed* commits is fine; see §4.3).
+- **Sync first.** Teammates push often. Run `git fetch && git pull --rebase` before starting any task, and read `git log --oneline HEAD@{1}..HEAD` to see what changed. Then re-read `docs/TASK.md` if it moved. Never build on a stale checkout.
+- **Work in small chunks.** One chunk is one small, verifiable step that moves one criterion (§2a), about 15–30 minutes, ideally under ~200 changed lines. For each chunk: sync → change → verify (§5) → commit → push. Then start the next chunk. Do not batch several features into one commit. Do not leave work unpushed for more than 30 minutes. If a request is bigger than one chunk, split it into a short list of chunks first and do them in order.
+- Trunk-based. Small commits straight to `main`, or branches that live under an hour. `git pull --rebase` again right before every push (rebasing your own *unpushed* commits is fine; see §4.3).
 - Split ownership by directory (for example `services/api`, `services/web`, compose + Caddyfile + README + smoke) to avoid conflicts. Agree the API contract first, in the README or `docs/API.md`. Ask before editing a teammate's area.
 - Run the verify command (§5) before pushing. If `main` breaks, fix forward or revert immediately. A broken `main` blocks the live preview for all three.
 - Conventional messages: `feat(api): parse uploaded statement`. Agents add a `Co-Authored-By` trailer when the tool supports it; AI use is allowed and nothing to hide.
@@ -204,6 +224,7 @@ If the main scenario is not working by 16:00, cut scope, tell the team, and upda
 - [ ] `./scripts/clean-test.sh` passes using only `.env.example` plus exactly what the README tells reviewers
 - [ ] Reviewer access is documented and works without any team member's account
 - [ ] Every mandatory requirement in `docs/TASK.md` is ticked or listed under Known limitations
+- [ ] Criteria scorecard in `docs/TASK.md` is current, and the control set shows the reorganization, the lost function and the duplicate, each with a correct source (§2a K1, K4)
 - [ ] README is in Russian, covers the 11 items in §9 and all 8 regulation-required items, and matches reality: run steps, env vars, verify steps, live URL, disclosures
 - [ ] No personal secrets in the repo: `git grep -nEi "sk-[a-z0-9]|nvapi-|api[_-]?key\s*="` shows only what §8 allowed
 - [ ] `git log` shows at least one meaningful commit in every hour since 13:00
