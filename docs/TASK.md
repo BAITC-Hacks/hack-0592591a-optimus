@@ -13,6 +13,8 @@ Task 1, owner Казахтелеком. This file is the spec (AGENTS.md §1). S
 
 Must-have (ТЗ §7): M1 units classified · M2 lost functions · M3 duplicates + conflicts of interest · M4 source per finding · M5 readable conclusion. Plus pdf/docx/xlsx input, upload + results UI, advisory disclaimer.
 
+Optional, also today, on a parallel track that never blocks the main one (§12a): O1 functions vs legislation · O3 recommendations. O2 (benchmarking) is not built: there is no benchmark data.
+
 ## 1. System
 
 ```
@@ -183,8 +185,8 @@ The generic-vs-specific case in ред. 9 («Директоры департам
 
 | Method | Path | Result |
 |---|---|---|
-| POST | `/api/analyses` | multipart fields `before`, `after`: pdf/docx/xlsx, ≤ 10 files per field, ≤ 20 MB each → `202 {"analysis_id"}` |
-| POST | `/api/analyses/demo` | same, using the bundled pair → `202 {"analysis_id"}` |
+| POST | `/api/analyses` | multipart fields `before`, `after`: pdf/docx/xlsx, ≤ 10 files per field, ≤ 20 MB each; optional `regulations` (laws and standards), same limits (§12a) → `202 {"analysis_id"}` |
+| POST | `/api/analyses/demo` | same, using the bundled pair and the bundled regulatory slice → `202 {"analysis_id"}` |
 | GET | `/api/analyses/:id` | the document from §6 |
 | GET | `/health`, `/api/health` | exists: `{"status":"ok","db":"ok"}`; add `"llm":"configured\|missing"` |
 | POST | `/api/documents/extract` | exists (one file → fragments); stays as a debugging aid and smoke check |
@@ -278,10 +280,11 @@ Planned `test/controlSet.test.js` assertions, after the pipeline exists: finding
 ## 10. Target repo layout (includes files still to be implemented)
 
 ```
-services/backend/   package.json, package-lock.json, Dockerfile (includes COPY demo ./demo), demo/{before,after}/*.pdf
-                    src/{server.js, config.js, db.js, llm.js, schemas.js, routes/analyses.js, prompts/*.md,
-                         pipeline/{clauses,structure,extract,compare,report}.js}
-                    test/{clauses,compare,controlSet}.test.js + test/fixtures/     (node:test, no extra deps)
+services/backend/   package.json, package-lock.json, Dockerfile (includes COPY demo ./demo; add COPY data ./data for O1),
+                    demo/{before,after}/*.pdf, data/regulatory/<doc_id>.jsonl (O1, AGENTS.md §7a)
+                    src/{server.js, config.js, db.js, seed.js, llm.js, schemas.js, routes/analyses.js, prompts/*.md,
+                         pipeline/{clauses,structure,extract,compare,regulatory,report}.js}
+                    test/{clauses,compare,regulatory,controlSet}.test.js + test/fixtures/     (node:test, no extra deps)
 services/extractor/ exists: FastAPI, python-docx / pdfplumber / openpyxl, pytest suite, `POST /extract`
 services/frontend/  src/{App.vue, api.js, components/{UploadPanel,ProgressBar,UnitsTable,MatchTable,FindingCard,Conclusion}.vue}
 docs/TASK.md        this file; §7 is the API contract
@@ -301,7 +304,15 @@ Backend deps: `mongodb`, `zod`, `multer` are already in `package.json`; add `ope
 | 17:15 | README RU (11 items), reviewer key decided (AGENTS.md §8), scorecard updated. | C |
 | 17:40 | `clean-test.sh` on a second laptop; freeze; final push ≤ 17:50. | all |
 
-Cut list if late: optional O1/O2/O3 work, LLM cache, then auth on analysis routes (never required). Never cut any Must-have M1–M5: unit classification, lost functions, duplicates **and conflicts of interest**, verified citations, and the analytical conclusion. Keep the demo run. Conflict detection is mandatory under the original ТЗ §7.3, not an optional rule; a missing part must be reported as unmet in the scorecard and README, never presented as satisfying M3. The embedding fallback is not optional either: without it rewordings show up as losses. If the conflict LLM review cannot be finished, keep the deterministic candidate as a POTENTIAL_CONFLICT with severity medium and say so in the README.
+Optional track (§12a), in parallel with the table above. It starts only when that row's main chunk is pushed and never blocks it:
+
+| By | Chunk | Owner |
+|---|---|---|
+| 15:40 | O1 data: export `Z030000415_`, `Z1500000410`, `Z1200000550` into `services/backend/data/regulatory/` (AGENTS.md §7a); add `COPY data ./data` and `ensureRegulatoryNorms()` in `src/seed.js`. Disclose the dataset in the README in the same commit. | Khazretsultan (only this laptop has the SSH key and Azure login for the export) |
+| 16:15 | `regulatory.js` + `regulatory.test.js`; «Нормативные требования» tab with the «Открыть на adilet.zan.kz» button. | Khazretsultan; B for the tab |
+| 16:50 | `report.js` also summarises O1 findings and writes O3 recommendations. | C |
+
+Cut list if late: optional O1/O3 work, LLM cache, then auth on analysis routes (never required). Never cut any Must-have M1–M5: unit classification, lost functions, duplicates **and conflicts of interest**, verified citations, and the analytical conclusion. Keep the demo run. Conflict detection is mandatory under the original ТЗ §7.3, not an optional rule; a missing part must be reported as unmet in the scorecard and README, never presented as satisfying M3. The embedding fallback is not optional either: without it rewordings show up as losses. If the conflict LLM review cannot be finished, keep the deterministic candidate as a POTENTIAL_CONFLICT with severity medium and say so in the README.
 
 ## 12. Decisions
 
@@ -312,7 +323,33 @@ Cut list if late: optional O1/O2/O3 work, LLM cache, then auth on analysis route
 - **No agent framework, no RAG.** Five plain modules are easier to debug and to explain in the README (K2 asks that the code matches the story).
 - **Findings are advisory by construction.** Deterministic rules produce candidates; labels say «возможная», conflict candidates go through an LLM review of the two clauses, and every card ends with «требует проверки». The ТЗ §9 asks for exactly this.
 - **The LLM never produces a quote.** Quotes come from clause objects; the LLM only points at clause ids and labels them. That is what makes M4 hold.
-- **Optional after K1–K4:** O3 recommendations as one more section of the report prompt. O1/O2 not today.
+- **Optional today (team decision, 23.09):** O1 per §12a on the parallel track, O3 as one more section of the report prompt. Both sit on top of a working main scenario and are the first to cut (§11).
+- **O2 is not built.** Benchmarking needs structural data on other operators. The organizer has provided none, and the adilet corpus does not hold it. It goes into the README under «Ограничения».
+
+## 12a. O1 (optional, today)
+
+`regulatory.js` runs after `compare.js` and before `report.js`, on «после» only. It never blocks the main scenario: if its data is missing, the analysis still finishes with `regulatory: []`, and `stats` says why.
+
+**O1 `pipeline/regulatory.js`: functions vs legislation.**
+- **Norms.** `services/backend/data/regulatory/*.jsonl`, taken from the adilet corpus: scraped from adilet.zan.kz, acts in force only (AGENTS.md §7a). `ensureRegulatoryNorms()` in `src/seed.js` loads them into Mongo `regulatory_norms` at startup, next to the existing `ensureDemoUser()`. It is idempotent, with a unique index on `doc_id` + `chunk_index`. Laws the user uploads in `regulations` go through `clauses.js` and win over the corpus.
+- **Demo slice** (verified in the corpus 23.09, 477 pieces):
+
+  | Act | Articles | What they say |
+  |---|---|---|
+  | «Об акционерных обществах» `Z030000415_` | ст. 61 | «Служба внутреннего аудита»: п. 2, its staff cannot be elected to the board or the executive body; п. 3, it reports directly to the board |
+  | «Об акционерных обществах» `Z030000415_` | ст. 53-1 | Board committees, including internal audit |
+  | «О Фонде национального благосостояния» `Z1200000550` | ст. 11 | «Служба внутреннего аудита Фонда» |
+  | «О противодействии коррупции» `Z1500000410` | ст. 1 п. 5, ст. 15 | Definition of конфликт интересов; the duty to prevent and resolve it |
+- **How.** Candidates come from the same steps as `compare.js` §5. First Jaccard on tokens. Then `llm.embed` cosine: top 5 norms per «после» function. The fallback is also the same: if `EMBEDDING_MODEL` is not configured or the call fails, use Jaccard ≥ 0.15 alone. Norm vectors are computed once and stored on the `regulatory_norms` documents, about 5 calls for the 477 demo pieces. The LLM judge (`src/prompts/regulatory.md`) returns `{norm_id | null, relation: required_by | restricted_by | none}` with cautious wording. Code verifies both quotes (the org clause and the norm text) before a finding is kept.
+- **Findings** (advisory names, as in §5):
+  - `REGULATORY_BASIS` (info): a function is grounded in a norm.
+  - `POTENTIAL_REGULATORY_GAP` (medium): a norm requires something that no «после» clause covers. It cites the norm and names the range that was searched.
+  - `POTENTIAL_REGULATORY_CONFLICT` (high): a clause contradicts a norm, for example internal audit not reporting to the board.
+- **Citation shape.** Each finding keeps its org citation. The norm is added as `norm: {doc_id, clause: "Статья 61, п. 3", breadcrumb, redaction_date, source_url}`. A norm is the «нормативное основание», never proof by itself and never a legal conclusion (ТЗ §9).
+
+**UI.** One more tab, «Нормативные требования», with the existing `scale` icon from `Icon.vue`. A norm card follows the design system (AGENTS.md §6a). It shows the breadcrumb, the quote, `ред. от …`, and the «Открыть на adilet.zan.kz» button (AGENTS.md §7a, rule 5). The button is styled `.btn .btn-ghost .btn-sm` (an inline action, not the one CTA) and uses a new `external-link` icon in `Icon.vue`.
+
+**Tests.** `regulatory.test.js` runs without a key. It uses 3 hand-written functions and 3 norms from the demo slice, and covers basis, gap, and a tampered quote that gets dropped.
 
 ## 13. Criteria scorecard (living: update in the same commit as any change that moves a criterion)
 
@@ -324,7 +361,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 | K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (parser tests cover Word level/start overrides; sub-items carry `marker`, `clause: null`); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected | `llm.js`, modules 1–5 with verify, analyses persisted |
 | K3 | 25 | ⚠️ | Russian README with run steps, tested auth commands and extractor response format; bundled control PDFs with provenance and reproducible extraction check; extraction/auth smoke checks; clean-test.sh | Verify §9 against the supplied PDFs, implement the demo run and backend tests without a key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |
-| K5 | 10 | ❌ | — | O3 recommendations after K1–K4 |
+| K5 | 10 | ❌ | — (plan only: AGENTS.md §7a, §12a; no O1 code or data in the repo yet) | O1 data + `regulatory.js`, O3 in the report; after K1–K4. O2 not built (§12) |
 
 ---
 

@@ -1,0 +1,2 @@
+# Append-only team log: keep both sides of concurrent appends instead of conflicting (AGENTS.md §10).
+docs/CHANGELOG.md merge=union

@@ -38,12 +38,12 @@ The full ТЗ, the Must-have list (M1–M5) and the living **Criteria scorecard*
 | K2 | Technical implementation | 25 | Clear services (api, web, mongo, LLM module per §7). The agent pipeline is visible in the code: parse → extract units and functions → match → detect → verify sources → report. The LLM extracts and classifies. Code does the unit diff, the counts and the check that each quote exists in the source. What we claim in the README is exactly what the code does. |
 | K3 | README and reproducibility | 25 | A clean clone plus the README reaches the main scenario on the demo set in the repo, and the expected output is written down. `scripts/smoke.sh` and `scripts/clean-test.sh` are green. Tests cover the diff and detection logic without a real key. |
 | K4 | Value and applicability | 15 | Every finding carries document + clause/fragment + quote, and the UI shows it. No claim without a document source (ТЗ §9). The output is marked advisory and needs human review. The conclusion is readable by a non-engineer. |
-| K5 | Potential and originality | 10 | Only after K1–K4: O3 (redistribution recommendations), then O1 (regulatory check, using the regulatory corpus tool in §7a), then O2 (benchmarking). Architecture that takes new document types or rule sets without a rewrite. |
+| K5 | Potential and originality | 10 | Built today, but only on top of a working K1–K4 (`docs/TASK.md` §12a): O1 (regulatory check, using the regulatory corpus tool in §7a) and O3 (redistribution recommendations). O2 (benchmarking) is not built: there is no benchmark data. Architecture that takes new document types or rule sets without a rewrite. |
 
 **Per-change rule (every commit, every agent):**
-1. Before starting: `git fetch && git pull --rebase` (§10). Then name which criterion (K1–K5) or Must-have (M1–M5) the change moves. If none, say so under §3 before writing code.
+1. Before starting: `git fetch && git pull --rebase` (§10). Read the tail of `docs/CHANGELOG.md`, and claim the chunk there with a `start` line (§10). Then name which criterion (K1–K5) or Must-have (M1–M5) the change moves. If none, say so under §3 before writing code.
 2. Before committing: confirm the change does not break K1's main scenario or K3's clean-clone run, and that every new finding type still carries a verified source (K4). Any change under `services/frontend/` follows the design system (§6a) and was checked visually.
-3. In the same commit, update the Criteria scorecard in `docs/TASK.md` if a status changed. Only mark ✅ after seeing it work in Docker (§3). If README claims changed, update the README too (§9).
+3. In the same commit, append a `done` line to `docs/CHANGELOG.md`, and update the Criteria scorecard in `docs/TASK.md` if a status changed. Only mark ✅ after seeing it work in Docker (§3). If README claims changed, update the README too (§9).
 4. Put the criterion IDs in the commit body, for example `Criteria: K1 M2, K4`.
 
 ## 3. Think first, then build. Do not blindly agree
@@ -177,11 +177,11 @@ Which doc sections to read for the upcoming screens: upload §6.6 (two dropzones
 
 ## 7a. Regulatory corpus tool (adilet.zan.kz, exported from ereestr.kz)
 
-**The backend must use this tool as its source of legislation text** for O1 (functions vs laws and regulations) and for the legal basis attached to M2 and M3 findings (for example the statutory definition of a conflict of interest, or a function a law requires someone to own). No other legislation source, and never legislation recalled by the LLM from memory. When it gets built is set by the build plan in `docs/TASK.md`, which on 23.09.2026 says "O1/O2 not today". Change the schedule there, not here.
+**The backend must use this tool as its source of legislation text** for O1 (functions vs laws and regulations) and for the legal basis attached to M2 and M3 findings (for example the statutory definition of a conflict of interest, or a function a law requires someone to own). No other legislation source, and never legislation recalled by the LLM from memory. O1 is built today; O2 is not. The schedule, the demo slice and the module design are in `docs/TASK.md` §11 and §12a.
 
 **What it is.** A pre-existing, separate project of the owner: MinJust Legal AI (ereestr.kz). Azure VM `legalai-vm`, resource group `MINJUST-LEGAL-AI`, subscription "Microsoft Azure Sponsorship". It holds the corpus of normative legal acts (НПА) that the owner's scraper collected from adilet.zan.kz (August–September 2026), split by legal structure.
 
-**Dataset definition.** The dataset is taken from adilet.zan.kz by scraping, and only acts in force are used (payload `status` = `действует`). The export filter enforces this. Acts that have lost force (`утратил силу`) never enter `data/regulatory/`.
+**Dataset definition.** The dataset is taken from adilet.zan.kz by scraping, and only acts in force are used (payload `status` = `действует`). The export filter enforces this. Acts that have lost force (`утратил силу`) never enter `services/backend/data/regulatory/`.
 
 Verified read-only on 23.09.2026:
 - Qdrant collection `legal_norms`: 2,995,020 pieces. Postgres `documents`: 130,596 rus and 74,756 kaz documents indexed.
@@ -191,12 +191,12 @@ Verified read-only on 23.09.2026:
 **Rules.**
 1. **Never at runtime.** The app never calls ereestr.kz, the VM, its Qdrant or Postgres, or its Azure OpenAI. It is a login-gated Ministry of Justice system that reviewers cannot reach (§8, 5.6.6), so it must never be on the main scenario path.
 2. **Offline, read-only export only.** A one-off export streams payloads over SSH to stdout. Nothing is written, restarted or reconfigured on the VM. Any Postgres query runs with `PGOPTIONS='-c default_transaction_read_only=on'`. Vectors are never exported: querying them needs MinJust's embedding deployment. `az` and `ssh` are the one host-tooling exception to §5, used only for this export. Building and running the app never needs them.
-3. **The data ships in the repo** as `data/regulatory/<doc_id>.jsonl`: one raw payload per line, in `chunk_index` order, unchanged. Pick acts by the control set and keep the total under about 10 MB.
-4. **Backend usage.** The idempotent seed loads the files into Mongo `regulatory_norms` (unique on `doc_id` + `chunk_index`) and maps each piece to the extractor's fragment shape. `text` stays `text`. `clause` becomes `Статья {article}`, plus `, п. {point}` when a point is set. `ref` becomes `breadcrumb`. `location` holds `{doc_id, source_url, redaction_date}`. From there a norm is an ordinary fragment. The LLM proposes which norm a function relates to. Code verifies that the quote exists verbatim in the norm text. The UI shows the breadcrumb, the edition date and the `source_url` link.
-5. **"Открыть на adilet.zan.kz" button (required in the frontend).** Every norm shown in the UI gets a button that opens that clause on adilet in a new tab (`target="_blank" rel="noopener noreferrer"`). Next to it, show `ред. от {redaction_date}`, because the site may already carry a newer edition. Code builds the link from the stored `source_url`, never from LLM output. It is rendered only when the path matches `^/(rus|kaz)/docs/[A-Za-z0-9_]+(#z\d+)?$`. The host comes from one frontend constant, `ADILET_BASE`, set to `https://old.adilet.zan.kz`. Checked on 23.09.2026: the new adilet.zan.kz is a test version that shows a version pop-up and "Не удалось отобразить страницу", while `https://old.adilet.zan.kz/rus/docs/Z1500000410#z37` scrolls to the clause. Re-check before 17:40, and switch the constant if the new site works. The quote shown in the app remains the evidence. The button is a supplement: a finding must stay verifiable even when adilet is down.
+3. **The data ships in the repo** as `services/backend/data/regulatory/<doc_id>.jsonl`: one raw payload per line, in `chunk_index` order, unchanged. Pick acts by the control set and keep the total under about 10 MB.
+4. **Backend usage.** `ensureRegulatoryNorms()` in `services/backend/src/seed.js` runs at startup next to `ensureDemoUser()`. It loads the files into Mongo `regulatory_norms` idempotently (unique on `doc_id` + `chunk_index`) and maps each piece to the extractor's fragment shape. `text` stays `text`. `clause` becomes `Статья {article}`, plus `, п. {point}` when a point is set. `ref` becomes `breadcrumb`. `location` holds `{doc_id, source_url, redaction_date}`. From there a norm is an ordinary fragment. The LLM proposes which norm a function relates to. Code verifies that the quote exists verbatim in the norm text. The UI shows the breadcrumb, the edition date and the `source_url` link.
+5. **"Открыть на adilet.zan.kz" button (required in the frontend).** Every norm shown in the UI gets a button that opens that clause on adilet in a new tab (`target="_blank" rel="noopener noreferrer"`). It follows the design system (§6a): `.btn .btn-ghost .btn-sm`, an inline action rather than the screen's one CTA, with an `external-link` icon added to `Icon.vue`. Next to it, show `ред. от {redaction_date}`, because the site may already carry a newer edition. Code builds the link from the stored `source_url`, never from LLM output. It is rendered only when the path matches `^/(rus|kaz)/docs/[A-Za-z0-9_]+(#z\d+)?$`. The host comes from one frontend constant, `ADILET_BASE`, set to `https://old.adilet.zan.kz`. Checked on 23.09.2026: the new adilet.zan.kz is a test version that shows a version pop-up and "Не удалось отобразить страницу", while `https://old.adilet.zan.kz/rus/docs/Z1500000410#z37` scrolls to the clause. Re-check before 17:40, and switch the constant if the new site works. The quote shown in the app remains the evidence. The button is a supplement: a finding must stay verifiable even when adilet is down.
 6. **Precedence.** Laws and standards the organizer provides (ТЗ §6, "предоставленным законодательством") are uploaded, go through the extractor, and win over the corpus. The corpus supplements them.
 7. **Findings stay sourced in the org documents.** A finding about units always cites the uploaded org documents (M4, ТЗ §9). A norm is shown only as its "нормативное основание", never as proof of a finding by itself.
-8. **Disclosure.** Do not describe this tool in the README. The commit that adds files under `data/regulatory/` must also disclose the dataset in the README (§4.7, §9): scraped from adilet.zan.kz, acts in force only, edition dates, exported with the owner's pre-existing tooling. Before writing the licence line, verify that official legislative texts are excluded from copyright under the Kazakhstan copyright law. Do not guess.
+8. **Disclosure.** Do not describe this tool in the README. The commit that adds files under `services/backend/data/regulatory/` must also disclose the dataset in the README (§4.7, §9): scraped from adilet.zan.kz, acts in force only, edition dates, exported with the owner's pre-existing tooling. Before writing the licence line, verify that official legislative texts are excluded from copyright under the Kazakhstan copyright law. Do not guess.
 
 **Candidate acts** (rus; editions and piece counts verified 23.09.2026; the topic column is a guess from the title):
 
@@ -240,9 +240,9 @@ for r in sorted(rows, key=lambda r: r.get("chunk_index", 0)):
     print(json.dumps(r, ensure_ascii=False))
 PY
 }
-mkdir -p data/regulatory
-for id in Z1500000410 Z030000415_; do export_act "$id" > "data/regulatory/$id.jsonl"; done
-wc -l data/regulatory/*.jsonl   # line counts must match the Pieces column
+mkdir -p services/backend/data/regulatory
+for id in Z030000415_ Z1500000410 Z1200000550; do export_act "$id" > "services/backend/data/regulatory/$id.jsonl"; done
+wc -l services/backend/data/regulatory/*.jsonl   # line counts must match the Pieces column
 ```
 
 ## 8. Reviewer access, reliability and security
@@ -283,6 +283,12 @@ Also retain **Доступ для жюри**, **Надёжность и безо
 ## 10. Git workflow for 3 people and 5 hours
 
 - **Sync first.** Teammates push often. Run `git fetch && git pull --rebase` before starting any task, and read `git log --oneline HEAD@{1}..HEAD` to see what changed. Then re-read `docs/TASK.md` if it moved. Never build on a stale checkout.
+- **Changelog: the team's shared state.** `docs/CHANGELOG.md` is an append-only log of what is done, claimed and blocked, across all three people and their agents. Its format is at the top of the file.
+  - **Before a chunk:** read the tail (`tail -25 docs/CHANGELOG.md`) and check that nobody holds a `start` on the same area. Then append your own `start` line, and commit and push that line alone at once. That push is the claim.
+  - **With the work:** append the `done` line in the same commit.
+  - **Stuck:** append `blocked` and the reason. **Giving up:** append `drop`.
+  - **Stale claims:** a `start` with no `done` for 45 minutes is stale. Ask that person; do not take the work over silently.
+  - **Never edit or reorder old lines.** `.gitattributes` sets `merge=union` on this file, so concurrent appends never conflict on rebase.
 - **Work in small chunks.** One chunk is one small, verifiable step that moves one criterion (§2a), about 15–30 minutes, ideally under ~200 changed lines. For each chunk: sync → change → verify (§5) → commit → push. Then start the next chunk. Do not batch several features into one commit. Do not leave work unpushed for more than 30 minutes. If a request is bigger than one chunk, split it into a short list of chunks first and do them in order.
 - Trunk-based. Small commits straight to `main`, or branches that live under an hour. `git pull --rebase` again right before every push (rebasing your own *unpushed* commits is fine; see §4.3).
 - Split ownership by directory (for example `services/api`, `services/web`, compose + Caddyfile + README + smoke) to avoid conflicts. Agree the API contract first, in the README or `docs/API.md`. Ask before editing a teammate's area.
