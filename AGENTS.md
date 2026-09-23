@@ -42,7 +42,7 @@ The full ТЗ, the Must-have list (M1–M5) and the living **Criteria scorecard*
 
 **Per-change rule (every commit, every agent):**
 1. Before starting: `git fetch && git pull --rebase` (§10). Then name which criterion (K1–K5) or Must-have (M1–M5) the change moves. If none, say so under §3 before writing code.
-2. Before committing: confirm the change does not break K1's main scenario or K3's clean-clone run, and that every new finding type still carries a verified source (K4).
+2. Before committing: confirm the change does not break K1's main scenario or K3's clean-clone run, and that every new finding type still carries a verified source (K4). Any change under `services/frontend/` follows the design system (§6a) and was checked visually.
 3. In the same commit, update the Criteria scorecard in `docs/TASK.md` if a status changed. Only mark ✅ after seeing it work in Docker (§3). If README claims changed, update the README too (§9).
 4. Put the criterion IDs in the commit body, for example `Criteria: K1 M2, K4`.
 
@@ -143,6 +143,28 @@ Service rules:
 - Need multi-document atomicity? Prefer a single-document design. If impossible, Mongo must run as a single-node replica set; raise that under §3 first.
 - **Demo data ships in the repo** and loads through an idempotent seed command that runs in a container (for example `docker compose run --rm api python -m app.seed`), documented in the README and obviously synthetic. Reviewers must not need any data account. Never real personal data; if the ТЗ provides a dataset, include it or a documented subset with its license.
 - Need vector search? Add a `qdrant` service rather than bending Mongo.
+
+## 6a. Frontend design system (every UI change)
+
+The UI follows one design system in Kazakhtelecom's corporate style. **Read [`services/frontend/DESIGN_SYSTEM.md`](services/frontend/DESIGN_SYSTEM.md) before touching anything under `services/frontend/`.** It is the spec for colours, type, spacing, patterns and domain status colours. A screen that ignores it is unfinished work, even if it functions.
+
+What exists and must be reused:
+- `src/styles/tokens.css`: every colour, font size, space, radius and shadow as a CSS variable.
+- `src/styles/components.css`: shared classes (`btn btn-cta|primary|outline|ghost`, `input`, `field`, `card`, `badge-*`, `chip`, `alert-*`, `table-wrap`/`table`, `dropzone`, `progress`, `stepper`, `finding`, `src-chip`, `quote`, `kpi`, `tile`, `panel`, `app-header`, `page-head`).
+- `src/Icon.vue` (icons), `src/BrandMark.vue` (logo), `src/HealthStatus.vue` (API status pill). `AuthPanel.vue` and `App.vue` are the reference screens.
+
+Rules:
+1. **Compose from what exists.** Use the shared classes first. Screen-specific layout goes in `<style scoped>` and uses tokens only: `var(--kt-blue-600)`, `var(--sp-4)`, `var(--r-lg)`. No raw hex colours, no off-scale spacing, no new fonts, no inline `style=""` for colour or spacing.
+2. **No UI or CSS frameworks and no icon libraries** (Tailwind, Bootstrap, Vuetify, Element, PrimeVue, lucide packages). To add an icon, add its path to `PATHS` in `src/Icon.vue`. Nothing from an external CDN: fonts and icons ship in the bundle so the clean-clone run works offline.
+3. **A new reusable pattern is added to the system, not forked.** Add it to `components.css` and describe it in `DESIGN_SYSTEM.md` in the same commit. If the system truly cannot express what is needed, raise it under §3 instead of quietly restyling.
+4. **Domain meaning has fixed colours** (`DESIGN_SYSTEM.md` §2.3). Unit status: Создано green, Сохранено slate, Реорганизовано cyan, Упразднено grey. Finding: loss red, duplication amber, conflict of interest violet. Always show colour, icon and text label together. Keep the enum-to-label/class/icon mapping in one module (see §11 of the doc) rather than repeating it per screen.
+5. **One orange CTA (`btn-cta`) per screen,** for its single main action. Everything else is blue or neutral.
+6. **Required on analysis screens (K4, ТЗ §9):** every finding shows its source as `src-chip` plus a `quote` block with the verbatim fragment (doc §6.9). A finding without a source is not rendered. The advisory banner (`alert alert-advisory`, doc §6.8) is on every results and conclusion screen and cannot be dismissed. Norms get the adilet button from §7a.5.
+7. **Copy is Russian,** in sentence case, and findings use hedged wording («возможная потеря», «признаки дублирования», «потенциальный конфликт интересов»). Error messages say what failed, not just «Ошибка».
+8. **Every state is designed:** loading (skeletons, not table spinners), empty (icon tile, title, one line of help), error (`alert-error` with a retry). A screen is not done until all three exist.
+9. **Check it visually before committing:** open the screen from the Docker build at desktop width and at about 600 px, and compare it with the doc and the reference screens. Do not claim a UI change is done without having looked at it.
+
+Which doc sections to read for the upcoming screens: upload §6.6 (two dropzones, «до» / «после»); analysis progress §6.7; results §6.4, §6.5, §6.10, §6.11 and §5.6; finding detail §5.3 and §6.9; conclusion §5.1, §6.8 and §6.9.
 
 ## 7. LLM integration
 
@@ -298,5 +320,6 @@ If the main scenario is not working by 16:00, cut scope, tell the team, and upda
 - [ ] README is in Russian, covers the 11 items in §9 and all 8 regulation-required items, and matches reality: run steps, env vars, verify steps, live URL, disclosures
 - [ ] No personal secrets in the repo: `git grep -nEi "sk-[a-z0-9]|nvapi-|api[_-]?key\s*="` shows only what §8 allowed
 - [ ] `git log` shows at least one meaningful commit in every hour since 13:00
+- [ ] Every screen follows the design system (§6a): no raw hex colours or stray UI libraries (`git grep -nE "#[0-9A-Fa-f]{6}" -- services/frontend/src ':!services/frontend/src/styles' ':!services/frontend/src/BrandMark.vue' ':!services/frontend/src/HealthStatus.vue'` prints nothing), the advisory banner is on the results and conclusion screens, and every finding shows its source
 - [ ] No TODO stubs pretending to be features; no placeholder text left in `Caddyfile` or README; no unused files
 - [ ] Final commit visible on GitHub `main` before 17:50
