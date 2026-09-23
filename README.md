@@ -150,14 +150,29 @@ docker run --rm -v "$PWD":/d --add-host=host.docker.internal:host-gateway curlim
 
 `kind` — `heading`, `paragraph`, `list_item`, `table_row` (Word) или `sheet_row` (Excel). `clause` — номер пункта (`"5.3.2"`) или `null`; подпункты `а)`, `б.` получают `clause: null` и букву в `marker` (`"а"`), чтобы backend присоединял их к открытому пункту. `location` зависит от формата: `{"paragraph"}` или `{"table","row","cells"}` для Word, `{"page","line_start","line_end"}` для PDF, `{"sheet","row","range","cells"}` для Excel. Ошибки возвращаются как `{"error":{"code","message"}}`: `400 bad_request`/`empty_file`, `413 file_too_large`/`document_too_large`, `415 unsupported_format`, `422 unreadable_document`, `503 extractor_unavailable`, `504 extractor_timeout`.
 
-Регистрация и вход через API (cookie сохраняется в файл `jar` и передаётся в `/api/auth/me`):
+Регистрация и вход через API (пример для Bash и Zsh). Cookie хранится во временной директории вне репозитория и удаляется после проверки. Функция передаёт аргументы Docker без повторного разбора кавычек; пути с пробелами также поддерживаются.
 
 ```bash
-CURL="docker run --rm -v \"$PWD\":/d -w /d --add-host=host.docker.internal:host-gateway curlimages/curl:8.10.1 -sS"
-$CURL -c jar -H 'content-type: application/json' -d '{"name":"Тест","email":"test@example.com","password":"password123"}' http://host.docker.internal:3000/api/auth/signup
-$CURL -c jar -H 'content-type: application/json' -d '{"email":"test@example.com","password":"password123"}' http://host.docker.internal:3000/api/auth/login
-$CURL -b jar http://host.docker.internal:3000/api/auth/me
+(
+  AUTH_COOKIE_DIR="$(mktemp -d)"
+  trap 'if [ -f "$AUTH_COOKIE_DIR/jar" ]; then unlink "$AUTH_COOKIE_DIR/jar"; fi; rmdir "$AUTH_COOKIE_DIR"' EXIT
+  api_curl() {
+    docker run --rm --user "$(id -u):$(id -g)" \
+      -v "$AUTH_COOKIE_DIR:/cookies" \
+      --add-host=host.docker.internal:host-gateway \
+      curlimages/curl:8.10.1 -sS -w '\nHTTP %{http_code}\n' "$@"
+  }
+  api_curl -c /cookies/jar -H 'content-type: application/json' \
+    -d '{"name":"Тест README","email":"readme-demo@example.com","password":"example-pass-123"}' \
+    http://host.docker.internal:3000/api/auth/signup
+  api_curl -c /cookies/jar -H 'content-type: application/json' \
+    -d '{"email":"readme-demo@example.com","password":"example-pass-123"}' \
+    http://host.docker.internal:3000/api/auth/login
+  api_curl -b /cookies/jar http://host.docker.internal:3000/api/auth/me
+)
 ```
+
+Первый запуск возвращает HTTP `201`, `200`, `200`. При повторном запуске регистрация возвращает `409 email_taken`, а вход и `/me` — `200`. Это отдельный синтетический аккаунт для проверки примера, не личные учётные данные. При другом HTTP-порте замените `3000` во всех трёх адресах.
 
 Успешные ответы — `{"user":{"id","email","name","createdAt"}}` (`201` для регистрации, `200` для входа и `/me`), `logout` отвечает `204`. Ошибки: `401 invalid_credentials` (неверный email или пароль), `401 unauthorized` (нет или истекла сессия), `409 email_taken`, `422 validation_error` (в `message` — поле и причина). Хеш пароля API не возвращает. То же самое доступно в браузере на стартовой странице.
 
