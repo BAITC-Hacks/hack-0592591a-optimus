@@ -105,8 +105,9 @@ if grep -q '"llm":"configured"' <<<"$health"; then
   ANALYSIS_ID="$(grep -oE 'a_[0-9a-f]{12}' <<<"$out" | head -1)"
   [ -n "$ANALYSIS_ID" ] && grep -q ' 202$' <<<"$out"; report "demo analysis queued (202)" $? "$out"
   status=""
+  # The finished document is ~1 MB; allow a slow link and tolerate a transient error while polling.
   for _ in $(seq 1 "${ANALYSIS_TIMEOUT:-360}"); do
-    out="$("${CURL[@]}" "$BASE_URL/api/analyses/$ANALYSIS_ID" 2>&1)"
+    out="$("${CURL[@]}" --max-time 60 "$BASE_URL/api/analyses/$ANALYSIS_ID" 2>&1 || true)"
     status="$(grep -oE '"status":"[a-z]+"' <<<"${out:0:400}" | head -1)"
     case "$status" in *done*|*failed*) break ;; esac
     sleep 2

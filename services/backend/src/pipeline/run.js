@@ -37,6 +37,19 @@ async function mapLimit(items, limit, fn) {
 }
 
 /**
+ * Analyses left "queued" or "running" by a previous process were interrupted by a
+ * restart or redeploy: the pipeline runs in memory, so they can never finish. Mark
+ * them failed at startup so the UI stops polling and says what happened.
+ */
+export async function failInterruptedAnalyses() {
+  const result = await analyses().updateMany(
+    { status: { $in: ["queued", "running"] } },
+    { $set: { status: "failed", finished_at: new Date(), updated_at: new Date(), error: { stage: null, code: "interrupted", message: "Анализ прерван перезапуском сервера. Запустите анализ заново.", filename: null } } },
+  );
+  if (result.modifiedCount) console.warn(`[pipeline] ${result.modifiedCount} interrupted analysis(es) marked failed`);
+}
+
+/**
  * @param {string} id  analysis id (document already inserted with status "queued")
  * @param {{side: string, buffer: Buffer, filename: string, mimetype?: string}[]} files
  * @param {{llm?: object, extractClauses?: Function}} deps  stubs for tests
