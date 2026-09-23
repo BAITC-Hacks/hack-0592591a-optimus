@@ -157,7 +157,7 @@ Every write and every LLM response is validated with zod (`src/schemas.js`). IDs
 | POST | `/api/analyses` | multipart fields `before`, `after`: pdf/docx/xlsx, ≤ 10 files per field, ≤ 20 MB each → `202 {"analysis_id"}` |
 | POST | `/api/analyses/demo` | same, using the bundled pair → `202 {"analysis_id"}` |
 | GET | `/api/analyses/:id` | the document from §6 |
-| GET | `/health`, `/api/health` | exists: `{"status":"ok","db":"ok"}`; add `"llm":"configured|missing"` |
+| GET | `/health`, `/api/health` | exists: `{"status":"ok","db":"ok"}`; add `"llm":"configured\|missing"` |
 | POST | `/api/documents/extract` | exists (one file → fragments); stays as a debugging aid and smoke check |
 | * | `/api/auth/*` | signup / login / me with a session cookie, being added now. Analysis routes stay **public** so reviewers and `smoke.sh` reach the main scenario without an account; if the team decides otherwise, README and smoke must sign up first. |
 
