@@ -1,5 +1,6 @@
 import express from "express";
 import { connectDb, pingDb, closeDb } from "./db.js";
+import { ensureDemoUser } from "./seed.js";
 
 import { HttpError } from "./httpError.js";
 import { auth } from "./routes/auth.js";
@@ -48,8 +49,9 @@ const port = Number(process.env.PORT) || 8000;
 try {
   const db = await connectDb();
   console.log(`connected to MongoDB, database "${db.databaseName}"`);
+  await ensureDemoUser();
 } catch (err) {
-  console.error(`MongoDB connection failed: ${err.message}`);
+  console.error(`startup failed: ${err.message}`);
   process.exit(1);
 }
 

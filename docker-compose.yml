@@ -60,6 +60,9 @@ services:
       EXTRACTOR_URL: http://extractor:8001
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret-change-me}
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-demo@example.com}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-demo12345}
+      DEMO_USER_NAME: ${DEMO_USER_NAME:-Демо}
     depends_on:
       mongo:
         condition: service_healthy

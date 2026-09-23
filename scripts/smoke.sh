@@ -87,6 +87,8 @@ if out="$(docker run --rm --add-host=host.docker.internal:host-gateway --entrypo
 else
   echo "  FAIL  me with session cookie"; echo "        got: ${out:0:300}"; fail=$((fail + 1))
 fi
+check "demo account login"     '"email":"demo@example.com"' \
+  -X POST "$BASE_URL/api/auth/login" "${JSON[@]}" -d '{"email":"demo@example.com","password":"demo12345"}'
 
 # --- main scenario (fill in once the API exists) -----------------------------
 # check "main scenario"      '"result"'  -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{...}'
