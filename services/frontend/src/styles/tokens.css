@@ -28,7 +28,7 @@
   --line-strong: #CBD6E6;
   --surface: #FFFFFF;
   --surface-muted: #F7F9FC;
-  --bg: #F4F6FA;
+  --bg: #F5F4EF;
 
   /* Unit status */
   --st-created: #0E9F6E;     --st-created-bg: #E4F7EF;
@@ -45,35 +45,36 @@
   --mark: #FFF1C2;
 
   /* Results screens (redesign 23.09): calm panels, one accent, colour only on the finding type */
-  --navy: #0E1F45;
-  --accent: #2F6FE4;
-  --accent-soft: #A9C4F5;
-  --page: #F4F6FA;
+  --navy: #1F1E1D;
+  --accent: #0F5C5A;
+  --accent-soft: #BCD6D3;
+  --page: #F5F4EF;
   --panel: #FFFFFF;
-  --panel-line: #E4E8F0;
-  --chip: #EEF2F8;
+  --panel-line: #E3E0D8;
+  --chip: #EFEDE7;
   --text: #111B33;
-  --text-2: #3D475F;
-  --muted: #66708A;
-  --c-loss: #D3462F;      --c-loss-text: #B0361F;
-  --c-conflict: #7A4DD6;  --c-conflict-text: #5F3BB0;
-  --c-dup: #E3A83B;       --c-dup-text: #9A6110;
-  --c-ok: #1E9E63;        --c-ok-text: #177A4B;
+  --text-2: #4F4E4A;
+  --muted: #6B6A66;
+  --c-loss: #B3362B;      --c-loss-text: #A12A22;
+  --c-conflict: #6B4FB3;  --c-conflict-text: #5F3BB0;
+  --c-dup: #B8730F;       --c-dup-text: #8A5A0C;
+  --c-ok: #2F7D4F;        --c-ok-text: #256840;
   --c-reorg: #0E8FA8;     --c-reorg-text: #0B6F84;
   --sh-panel: 0 1px 2px rgba(14, 31, 69, 0.04), 0 12px 32px rgba(14, 31, 69, 0.06);
-  --panel-2: #F7F9FC;
-  --line-2: #D5DBE6;
+  --panel-2: #FAF9F5;
+  --line-2: #D6D3CA;
   --flow-line: #C7CEDB;
-  --chip-hover: #DDE7F8;
-  --c-ok-bg: #E3F5EC;
+  --chip-hover: #E3ECEB;
+  --c-ok-bg: #E4F2E8;
   --c-reorg-bg: #E6F3F6;
-  --c-loss-bg: #FBE9E5;
-  --c-dup-bg: #FBF1DC;
+  --c-loss-bg: #FBE7E4;
+  --c-dup-bg: #FBF0DC;
+  --c-conflict-bg: #EFEAFA;
   --white: #FFFFFF;
 
   /* Type */
   --font-sans: "Golos Text", "Nunito Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Manrope", "Golos Text", "Nunito Sans", sans-serif;
+  --font-display: "Lora", Georgia, "Times New Roman", serif;
   --font-quote: "Lora", "PT Serif", Georgia, "Times New Roman", serif;
   --fs-display: 40px; --lh-display: 48px;
   --fs-h1: 30px;      --lh-h1: 38px;

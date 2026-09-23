@@ -177,8 +177,8 @@ print("regulatory", "ok" if s.get("regulatory_status")=="ok" and s.get("regulato
   history="$(tail -1 <<<"$out")"
   grep -q "\"_id\":\"$MANUAL_ID\"" <<<"$history" && grep -q '"code":"irrelevant_document"' <<<"$history"
   report "history lists the signed-in user's run" $? "${history:0:300}"
-  grep -q "\"_id\":\"$ANALYSIS_ID\"" <<<"$history"
-  report "history does not list another user's run" $(( $? == 0 ? 1 : 0 )) "${history:0:300}"
+  ! grep -q "\"_id\":\"$ANALYSIS_ID\"" <<<"$history"
+  report "history does not list another user's run" $? "${history:0:300}"
 else
   echo "  skip  demo analysis and control set: LLM not configured (set OPENAI_API_KEY and LLM_MODEL in .env)"
   check "demo analysis without a model answers 503 llm_unavailable" '"llm_unavailable"' -X POST "$BASE_URL/api/analyses/demo"

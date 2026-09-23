@@ -12,6 +12,8 @@ import "@fontsource/golos-text/500.css";
 import "@fontsource/golos-text/600.css";
 import "@fontsource/golos-text/700.css";
 import "@fontsource/lora/400.css";
+import "@fontsource/lora/600.css";
+import "@fontsource/lora/700.css";
 import "./styles/tokens.css";
 import "./styles/components.css";
 import App from "./App.vue";

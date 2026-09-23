@@ -6,6 +6,7 @@ import HealthStatus from "./HealthStatus.vue";
 import Icon from "./Icon.vue";
 import ClausePanel from "./components/ClausePanel.vue";
 import Conclusion from "./components/Conclusion.vue";
+import FindingRow from "./results/FindingRow.vue";
 import HistoryList from "./components/HistoryList.vue";
 import MatchTable from "./components/MatchTable.vue";
 import ProgressBar from "./components/ProgressBar.vue";
@@ -15,6 +16,7 @@ import SummaryView from "./results/SummaryView.vue";
 import UnitPage from "./results/UnitPage.vue";
 import { listAnalyses, pollAnalysis, startAnalysis, startDemo } from "./api.js";
 import { SIDE } from "./domain.js";
+import { recommendations, sortFindings } from "./results/text.js";
 
 const health = ref({ state: "checking", text: "проверка…" });
 const user = ref(null);
@@ -55,11 +57,19 @@ const docPair = computed(() => {
   return docs.length ? `${name("before")} → ${name("after")}` : "";
 });
 const SCREENS = [
-  ["summary", "Итог"],
-  ["units", "Подразделения"],
-  ["regulatory", "Нормативные требования"],
+  ["summary", "Обзор"],
+  ["units", "Структура"],
+  ["losses", "Потеря функций"],
+  ["dups", "Дублирование и конфликты"],
   ["conclusion", "Заключение"],
+  ["recs", "Рекомендации"],
 ];
+const sortedFindings = computed(() => sortFindings(analysis.value?.findings ?? []));
+const lossFindings = computed(() => sortedFindings.value.filter((f) => f.type === "POTENTIAL_LOSS"));
+const dupFindings = computed(() => sortedFindings.value.filter((f) => ["POTENTIAL_DUPLICATION", "POTENTIAL_CONFLICT", "OVERLAP"].includes(f.type)));
+const recs = computed(() => recommendations(analysis.value?.conclusion_md));
+const module = ref("recs"); // recs | regulatory (design: «Дополнительные проверки»)
+const regulatoryCount = computed(() => (analysis.value?.regulatory ?? []).length);
 
 async function loadHealth() {
   try {
@@ -233,19 +243,18 @@ onUnmounted(stopClock);
   <template v-if="user">
     <header class="topbar">
       <div class="wrap">
-        <BrandMark inverse />
-        <nav v-if="view === 'done' && !showHistory" class="segments" aria-label="Экраны результатов">
+        <BrandMark />
+        <nav v-if="view === 'done' && !showHistory" class="tabs" aria-label="Экраны результатов">
           <button v-for="[key, label] in SCREENS" :key="key" type="button" :class="{ active: screen === key }" @click="screen = key">{{ label }}</button>
         </nav>
+        <span v-else-if="!showHistory" class="crumb">{{ view === "idle" ? "Новый анализ" : view === "running" ? "Анализ ИИ" : "Проверка документов" }}</span>
         <div class="spacer" />
-        <span v-if="view === 'done' && !showHistory" class="docs">{{ docPair }}</span>
-        <HealthStatus v-else-if="!showHistory" :health="health" inverse />
-        <div class="user">
-          <span class="avatar">{{ initials }}</span>
-          <span class="name">{{ user.name }}</span>
-        </div>
+        <span v-if="view === 'done' && !showHistory" class="docs" :title="docPair">{{ docPair }}</span>
+        <HealthStatus v-else-if="!showHistory" :health="health" />
         <button type="button" class="tb-btn ghost" :class="{ on: showHistory }" @click="toggleHistory"><Icon name="file-text" class="icon-sm" />История<span v-if="historyItems.length" class="count">{{ historyItems.length }}</span></button>
-        <button v-if="view !== 'idle' || showHistory" type="button" class="tb-btn" @click="reset">Новый анализ</button>
+        <button v-if="view === 'done' && !showHistory" type="button" class="tb-btn primary" @click="downloadConclusion">Экспорт заключения</button>
+        <button v-else-if="view !== 'idle' || showHistory" type="button" class="tb-btn" @click="reset">Новый анализ</button>
+        <div class="user" :title="user.name"><span class="avatar">{{ initials }}</span></div>
         <button type="button" class="tb-btn ghost" @click="logout"><Icon name="log-out" class="icon-sm" />Выйти</button>
       </div>
     </header>
@@ -315,12 +324,38 @@ onUnmounted(stopClock);
           @show-units="showUnits"
           @show-conclusion="screen = 'conclusion'"
           @show-matches="screen = 'matches'"
+          @show-losses="screen = 'losses'"
+          @show-dups="screen = 'dups'"
           @download="downloadConclusion"
         />
         <UnitPage v-else-if="screen === 'units'" :analysis="analysis" :selected="selectedUnit" @select="selectedUnit = $event" @open-clause="clauseTarget = $event" />
-        <section v-else-if="screen === 'regulatory'" class="screen">
-          <h2>Нормативные требования</h2>
-          <div class="panel pad"><RegulatoryTab :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" /></div>
+        <section v-else-if="screen === 'losses'" class="screen">
+          <div class="screen-head">
+            <div><h2>Потеря функций</h2><p class="sub">Каждая функция из действующих положений сверена с новыми. Не найденные — вверху; строка раскрывается в цитаты «было» и «стало».</p></div>
+            <button type="button" class="link" @click="screen = 'matches'">Все сопоставления · {{ (analysis.matches ?? []).length }}</button>
+          </div>
+          <div v-if="!lossFindings.length" class="panel pad empty">Все функции редакции «до» нашли эквивалент в новых документах.</div>
+          <div v-else class="panel list"><FindingRow v-for="(f, i) in lossFindings" :key="f.finding_id" :finding="f" :documents="analysis.documents" :index="i + 1" :open="i === 0" @open-clause="clauseTarget = $event" /></div>
+        </section>
+        <section v-else-if="screen === 'dups'" class="screen">
+          <div class="screen-head">
+            <div><h2>Дублирование и конфликты</h2><p class="sub">Функции новой структуры с двумя владельцами, пересечения общей и частной нормы и сочетание исполнения с контролем в одном подразделении.</p></div>
+          </div>
+          <div v-if="!dupFindings.length" class="panel pad empty">Признаков дублирования и конфликта интересов не найдено.</div>
+          <div v-else class="panel list"><FindingRow v-for="(f, i) in dupFindings" :key="f.finding_id" :finding="f" :documents="analysis.documents" :index="i + 1" :open="i === 0" @open-clause="clauseTarget = $event" /></div>
+        </section>
+        <section v-else-if="screen === 'recs'" class="screen">
+          <div class="screen-head"><div><h2>Рекомендации и дополнительные проверки</h2><p class="sub">Каждый модуль работает на тех же выводах и тоже ссылается на источники.</p></div></div>
+          <div class="modules">
+            <button type="button" class="panel module" :class="{ active: module === 'recs' }" @click="module = 'recs'"><b>Рекомендации <span class="mtag">{{ recs.length }} предложений</span></b><span>Перераспределение функций и устранение пересечений</span></button>
+            <button type="button" class="panel module" :class="{ active: module === 'regulatory' }" @click="module = 'regulatory'"><b>Соответствие законодательству <span class="mtag">{{ regulatoryCount ? `${regulatoryCount} выводов` : "нет отклонений" }}</span></b><span>Функции против законов, стандартов и требований регулятора</span></button>
+          </div>
+          <div v-if="module === 'recs'" class="panel pad">
+            <ol v-if="recs.length" class="recs"><li v-for="(r, i) in recs" :key="i">{{ r }}</li></ol>
+            <p v-else class="empty">Рекомендации приведены в заключении.</p>
+            <button type="button" class="link" @click="screen = 'conclusion'">Заключение целиком →</button>
+          </div>
+          <div v-else class="panel pad"><RegulatoryTab :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" /></div>
         </section>
         <section v-else-if="screen === 'matches'" class="screen">
           <div class="screen-head">
@@ -348,21 +383,23 @@ onUnmounted(stopClock);
 
 <style scoped>
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 40px; }
-.topbar { position: sticky; top: 0; z-index: 20; background: var(--navy); color: var(--white); }
-.topbar .wrap { height: 60px; display: flex; align-items: center; gap: 24px; }
-.segments { display: flex; gap: 2px; padding: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 10px; }
-.segments button { white-space: nowrap; padding: 6px 14px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.78); cursor: pointer; }
-.segments button.active { background: var(--white); color: var(--navy); }
+.topbar { position: sticky; top: 0; z-index: 20; background: var(--white); color: var(--text); border-bottom: 1px solid var(--panel-line); }
+.topbar .wrap { height: 64px; display: flex; align-items: center; gap: 24px; }
+.tabs { display: flex; gap: 4px; height: 64px; }
+.tabs button { white-space: nowrap; padding: 0 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-size: 14px; color: var(--text-2); cursor: pointer; }
+.tabs button.active { color: var(--navy); font-weight: 600; border-bottom-color: var(--accent); }
+.crumb { font-size: 14px; color: var(--muted); }
 .spacer { flex: 1; }
-.docs { font-size: 13px; color: rgba(255, 255, 255, 0.66); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.user .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); color: var(--white); font-weight: 700; font-size: 12px; }
-.user .name { color: rgba(255, 255, 255, 0.86); font-weight: 600; }
-.tb-btn { white-space: nowrap; height: 36px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 9px; background: transparent; color: var(--white); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.tb-btn.ghost { border-color: transparent; color: rgba(255, 255, 255, 0.78); }
-.tb-btn:hover { background: rgba(255, 255, 255, 0.1); }
-.tb-btn.on { background: rgba(255, 255, 255, 0.14); color: var(--white); }
-.tb-btn .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: rgba(255, 255, 255, 0.18); font-size: 11px; line-height: 18px; text-align: center; }
+.docs { font-size: 13px; color: var(--muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user { display: flex; align-items: center; }
+.user .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--chip); color: var(--navy); font-weight: 700; font-size: 12px; }
+.tb-btn { white-space: nowrap; height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--white); color: var(--navy); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tb-btn.ghost { border-color: transparent; color: var(--text-2); background: transparent; }
+.tb-btn:hover { background: var(--panel-2); }
+.tb-btn.on { background: var(--chip); color: var(--navy); }
+.tb-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--white); font-weight: 600; }
+.tb-btn.primary:hover { background: var(--accent); opacity: 0.92; }
+.tb-btn .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--chip); font-size: 11px; line-height: 18px; text-align: center; }
 .page { padding-top: 0; padding-bottom: 48px; display: flex; flex-direction: column; gap: 24px; }
 .page > .alert { margin-top: 24px; }
 .intro { display: flex; flex-direction: column; gap: 10px; padding: 44px 0 4px; max-width: 760px; }
@@ -371,7 +408,16 @@ onUnmounted(stopClock);
 .eyebrow-s { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .screen { display: flex; flex-direction: column; gap: 16px; padding: 32px 0 0; }
 .screen h2 { margin: 0; font-family: var(--font-display); font-size: 24px; line-height: 32px; font-weight: 800; color: var(--navy); }
-.screen-head { display: flex; align-items: baseline; justify-content: space-between; }
+.screen-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.screen-head .sub { margin: 6px 0 0; font-size: 14px; line-height: 22px; color: var(--text-2); max-width: 820px; }
+.panel.list { overflow: hidden; }
+.panel.empty { color: var(--text-2); font-size: 14px; }
+.modules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.module { display: flex; flex-direction: column; gap: 6px; padding: 18px 22px; font: inherit; color: var(--text-2); font-size: 13px; text-align: left; cursor: pointer; }
+.module b { font-size: 16px; color: var(--navy); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.module.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.mtag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--chip-hover); color: var(--accent); }
+.recs { margin: 0 0 16px; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 24px; }
 .panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 16px; box-shadow: var(--sh-panel); }
 .panel.pad { padding: 20px; }
 .muted-s { font-size: 13px; color: var(--muted); }
@@ -393,12 +439,16 @@ onUnmounted(stopClock);
 .boot { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: var(--sp-4); }
 main.page > :deep(.upload-card) { margin-top: 16px; }
 main.page > :deep(.progress-card) { margin-top: 32px; }
+@media (max-width: 1400px) {
+  .tabs { order: 10; width: 100%; overflow-x: auto; height: 44px; margin-top: -8px; }
+  .topbar .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 0; gap: 12px 16px; }
+  .docs { display: none; }
+}
 @media (max-width: 900px) {
   .wrap { padding: 0 16px; }
   .topbar .wrap { gap: 12px; }
-  .segments { order: 10; width: 100%; overflow-x: auto; }
-  .topbar .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 10px; }
-  .docs, .user .name { display: none; }
+  .docs, .crumb { display: none; }
+  .modules, :deep(.grid4), :deep(.grid3) { grid-template-columns: 1fr; }
   .intro h1 { font-size: 30px; line-height: 38px; }
 }
 </style>
