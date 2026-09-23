@@ -3,6 +3,7 @@ import { connectDb, pingDb, closeDb } from "./db.js";
 import { ensureDemoUser } from "./seed.js";
 
 import { HttpError } from "./httpError.js";
+import { analyses } from "./routes/analyses.js";
 import { auth } from "./routes/auth.js";
 import { documents } from "./routes/documents.js";
 
@@ -25,6 +26,7 @@ app.get(["/health", "/api/health"], async (_req, res) => {
 
 app.use("/api/auth", auth);
 app.use("/api/documents", documents);
+app.use("/api/analyses", analyses);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: "not_found", message: "Route not found" } });

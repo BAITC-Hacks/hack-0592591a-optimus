@@ -8,12 +8,40 @@
 //   - page-number fragments ("6") are dropped;
 //   - everything from «Оглавление» / «Содержание» after the body is dropped;
 //   - sub-items (clause null, marker "а") become child clauses "<parent>.<marker>".
+import { z } from "zod";
+
 import { extractDocument } from "../extractorClient.js";
 
 // Same pattern as docs/TASK.md §4; the lookbehind keeps "1.10" from matching as "0.".
 const GLUED_ID = /(?<![\d.])(\d{1,2}(?:\.\d{1,2}){0,3})\.\s*(?=[А-ЯЁ«])/g;
 const PAGE_NUMBER = /^\d{1,3}$/;
 const TOC = /^(оглавление|содержание)(?![а-яё])/i; // not \b: in JS it only sees ASCII letters
+
+// What stage 1 writes to Mongo `analyses.documents[]` (docs/TASK.md §6). Validated before every write.
+export const SIDES = ["before", "after", "regulation"];
+
+export const ClauseSchema = z.object({
+  doc_id: z.string().min(1),
+  side: z.enum(SIDES),
+  clause_id: z.string().min(1).max(200),
+  parent_id: z.string().nullable(),
+  text: z.string(),
+  fragment_ids: z.array(z.string()).min(1),
+  ref: z.string().min(1),
+});
+
+export const AnalysisDocumentSchema = z.object({
+  doc_id: z.string().min(1),
+  side: z.enum(SIDES),
+  filename: z.string().min(1),
+  format: z.enum(["docx", "pdf", "xlsx", "xls"]),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  title: z.string().nullable(),
+  preamble: z.string(),
+  warnings: z.array(z.string()),
+  stats: z.record(z.string(), z.number().int().nonnegative()),
+  clauses: z.array(ClauseSchema),
+});
 
 const numericParts = (id) => id.split(".").map(Number);
 

@@ -357,7 +357,7 @@ Status: ❌ not started · ⚠️ partial · ✅ met and verified in Docker
 
 | ID | Pts | Status | Evidence in repo | Next gap |
 |---|---|---|---|---|
-| K1 | 25 | ❌ | Vue start page, Express health, single-file extraction; no comparison yet | Demo run end-to-end, then uploads (§11) |
+| K1 | 25 | ⚠️ | `POST /api/analyses` (before/after/regulations, 415/413/422 before 202), `/demo`, `GET /:id` persisted in Mongo; the demo run completes stage 1 (450/453 clauses); `pipeline.implemented` says which stages ran | Stages 2–5 wired into the runner, results UI |
 | K2 | 25 | ⚠️ | Compose with 5 services, Caddy routes, Express + Vue skeletons, healthchecks; `extractor` parses docx/pdf/xlsx/xls into located fragments (parser tests cover Word level/start overrides; sub-items carry `marker`, `clause: null`); `POST /api/documents/extract` via backend client with timeout/retry, covered by smoke.sh; Mongo connected; pipeline stage 1 `clauses.js` (glued ids, sub-items, page numbers, TOC tail; 450/453 clauses on the demo pair; 5 node tests) | `llm.js`, modules 2–5 with verify, analyses persisted |
 | K3 | 25 | ⚠️ | Russian README with run steps, tested auth commands and extractor response format; bundled control PDFs with provenance and reproducible extraction check; extraction/auth smoke checks; clean-test.sh; `node --test` for clauses on a real extractor fixture | Implement the demo run; backend tests for compare without a key |
 | K4 | 15 | ❌ | — | Findings with clause + quote in UI, advisory banner, readable conclusion |

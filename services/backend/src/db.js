@@ -52,4 +52,5 @@ export async function closeDb() {
 // Idempotent: createIndex is a no-op when the index already exists.
 async function ensureIndexes(db) {
   await db.collection("users").createIndex({ email: 1 }, { unique: true, name: "email_unique" });
+  await db.collection("analyses").createIndex({ created_at: -1 }, { name: "created_at" });
 }
