@@ -12,6 +12,7 @@ import re
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .formats import detect_format
@@ -70,8 +71,10 @@ async def extract(file: UploadFile = File(...)):
         raise ExtractionError(400, "empty_file", "Файл пустой.")
 
     filename = _safe_filename(file.filename)
-    fmt = detect_format(data, filename)
-    result = parse(data, fmt)
+    # Parsing is CPU-bound and synchronous: run it off the event loop so /health and
+    # other uploads are not blocked while a large document is being parsed.
+    fmt = await run_in_threadpool(detect_format, data, filename)
+    result = await run_in_threadpool(parse, data, fmt)
 
     fragments = result.fragments
     if len(fragments) > MAX_FRAGMENTS:

@@ -9,6 +9,7 @@ import io
 import re
 
 import docx
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -69,9 +70,9 @@ class _Numbering:
             if ref is not None:
                 self.levels[num.get(qn("w:numId"))] = abstract.get(ref.get(qn("w:val")), {})
 
-    def next_label(self, paragraph: Paragraph) -> tuple[str | None, bool]:
+    def next_label(self, paragraph: Paragraph, style) -> tuple[str | None, bool]:
         """Returns (label as Word renders it, e.g. "3.2." or "а)", is_list). None for bullets."""
-        num_pr = self._num_pr(paragraph)
+        num_pr = self._num_pr(paragraph, style)
         if num_pr is None:
             return None, False
         num_id, ilvl = num_pr
@@ -95,10 +96,9 @@ class _Numbering:
         return (label or None), True
 
     @staticmethod
-    def _num_pr(paragraph: Paragraph) -> tuple[str, int] | None:
+    def _num_pr(paragraph: Paragraph, style) -> tuple[str, int] | None:
         # Direct numbering first, then numbering inherited from the paragraph style.
         candidates = [paragraph._p.pPr]
-        style = paragraph.style
         while style is not None:
             candidates.append(style.element.pPr)
             style = style.base_style
@@ -120,6 +120,10 @@ def parse_docx(data: bytes) -> ParseResult:
 
     result = ParseResult()
     numbering = _Numbering(document)
+    # paragraph.style in python-docx rescans all styles on every call (O(paragraphs x styles):
+    # 23 s for 15k paragraphs). Resolve each style id once instead.
+    styles_by_id = {style.style_id: style for style in document.styles if style.type == WD_STYLE_TYPE.PARAGRAPH}
+    default_style = document.styles.default(WD_STYLE_TYPE.PARAGRAPH)
     headings: list[tuple[int, str]] = []  # heading stack: (level, text)
     paragraph_no = 0
     table_no = 0
@@ -131,10 +135,11 @@ def parse_docx(data: bytes) -> ParseResult:
         if isinstance(block, Paragraph):
             paragraph_no += 1
             text = clean_text(block.text)
-            label, is_list = numbering.next_label(block)
+            style = styles_by_id.get(block._p.style, default_style)
+            label, is_list = numbering.next_label(block, style)
             if not text:
                 continue
-            style_name = block.style.name if block.style is not None else ""
+            style_name = style.name if style is not None else ""
             heading = _HEADING_STYLE.match(style_name)
             is_title = style_name.lower() in ("title", "название")
             if label and not any(ch.isdigit() for ch in label):  # "а)" is a sub-item, not a clause
