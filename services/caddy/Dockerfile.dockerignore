@@ -1,0 +1,6 @@
+# Root build context: include only the proxy configuration and build definition.
+**
+!Caddyfile
+!services/
+!services/caddy/
+!services/caddy/Dockerfile

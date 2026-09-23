@@ -8,7 +8,9 @@ services:
   # Single public entrypoint. SITE_ADDRESS=":80" serves plain HTTP (local, judges).
   # A real hostname (the VM) makes Caddy obtain a Let's Encrypt certificate.
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: services/caddy/Dockerfile
     restart: unless-stopped
     depends_on:
       backend:
@@ -21,7 +23,6 @@ services:
       - "${WEB_PORT:-3000}:80"
       - "${HTTPS_PORT:-3443}:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     healthcheck:
@@ -29,6 +30,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+
+    develop:
+      watch:
+        - action: rebuild
+          path: ./Caddyfile
+        - action: rebuild
+          path: ./services/caddy
 
   mongo:
     image: mongo:8.0
