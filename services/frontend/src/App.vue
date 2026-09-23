@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import AuthPanel from "./AuthPanel.vue";
 import BrandMark from "./BrandMark.vue";
 import HealthStatus from "./HealthStatus.vue";
@@ -34,6 +34,8 @@ const historyItems = ref([]); // the user's runs, newest first (GET /api/analyse
 const showHistory = ref(false);
 let timer = null;
 let poller = null;
+// Finished runs never change, so reopening one from the history or the logo needs no request.
+const finished = new Map(); // analysis id → final API document
 
 const initials = computed(() =>
   (user.value?.name || "")
@@ -70,6 +72,29 @@ const dupFindings = computed(() => sortedFindings.value.filter((f) => ["POTENTIA
 const recs = computed(() => recommendations(analysis.value?.conclusion_md));
 const module = ref("recs"); // recs | regulatory (design: «Дополнительные проверки»)
 const regulatoryCount = computed(() => (analysis.value?.regulatory ?? []).length);
+
+// The open screen survives a reload: the hash holds the analysis id, sessionStorage the
+// screen, unit and module inside it. Per tab and a convenience only, so failures are ignored.
+const VIEW_KEY = "orgscope:view";
+const SCREEN_KEYS = new Set([...SCREENS.map(([key]) => key), "matches"]);
+watch([analysisId, screen, selectedUnit, module], ([id]) => {
+  if (!id) return;
+  try {
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify({ id, screen: screen.value, unit: selectedUnit.value, module: module.value }));
+  } catch {}
+});
+function restoreView(id) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(VIEW_KEY) || "null");
+    if (saved?.id !== id) return;
+    if (SCREEN_KEYS.has(saved.screen)) screen.value = saved.screen;
+    if (typeof saved.unit === "string") selectedUnit.value = saved.unit;
+    if (saved.module === "recs" || saved.module === "regulatory") module.value = saved.module;
+  } catch {}
+}
+
+// The logo leads to the newest finished report, or to a new analysis when there is none.
+const lastDoneId = computed(() => historyItems.value.find((item) => item.status === "done")?._id || "");
 
 async function loadHealth() {
   try {
@@ -142,6 +167,7 @@ async function follow(id) {
         first = false;
         analysis.value = doc;
         submitting.value = false;
+        if (doc.status === "done" || doc.status === "failed") finished.set(id, doc);
       },
       { signal: controller.signal },
     );
@@ -202,7 +228,21 @@ async function openAnalysis(id) {
   selectedUnit.value = "";
   clauseTarget.value = null;
   window.scrollTo({ top: 0 });
+  const cached = finished.get(id);
+  if (cached) {
+    location.hash = id;
+    analysis.value = cached;
+    return;
+  }
   await follow(id);
+}
+
+function goHome() {
+  if (!lastDoneId.value) return reset();
+  showHistory.value = false;
+  screen.value = "summary";
+  window.scrollTo({ top: 0 });
+  openAnalysis(lastDoneId.value);
 }
 
 function toggleHistory() {
@@ -234,7 +274,10 @@ onMounted(() => {
   loadHealth();
   loadSession();
   const id = location.hash.slice(1);
-  if (/^a_[0-9a-f]{12}$/.test(id)) follow(id);
+  if (/^a_[0-9a-f]{12}$/.test(id)) {
+    restoreView(id);
+    follow(id);
+  }
 });
 onUnmounted(stopClock);
 </script>
@@ -243,7 +286,7 @@ onUnmounted(stopClock);
   <template v-if="user">
     <header class="topbar">
       <div class="wrap">
-        <BrandMark />
+        <button type="button" class="home" :title="lastDoneId ? 'К последнему отчёту' : 'Новый анализ'" :aria-label="lastDoneId ? 'К последнему отчёту' : 'Новый анализ'" @click="goHome"><BrandMark /></button>
         <nav v-if="view === 'done' && !showHistory" class="tabs" aria-label="Экраны результатов">
           <button v-for="[key, label] in SCREENS" :key="key" type="button" :class="{ active: screen === key }" @click="screen = key">{{ label }}</button>
         </nav>
@@ -385,6 +428,8 @@ onUnmounted(stopClock);
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 40px; }
 .topbar { position: sticky; top: 0; z-index: 20; background: var(--white); color: var(--text); border-bottom: 1px solid var(--panel-line); }
 .topbar .wrap { height: 64px; display: flex; align-items: center; gap: 24px; }
+.home { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.home:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .tabs { display: flex; gap: 4px; height: 64px; }
 .tabs button { white-space: nowrap; padding: 0 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-size: 14px; color: var(--text-2); cursor: pointer; }
 .tabs button.active { color: var(--navy); font-weight: 600; border-bottom-color: var(--accent); }
