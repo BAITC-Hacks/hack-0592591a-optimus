@@ -42,6 +42,17 @@ def _format_counter(n: int, fmt: str) -> str:
     return str(n)
 
 
+def _read_level(level) -> tuple[str, str, int]:
+    fmt = level.find(qn("w:numFmt"))
+    text = level.find(qn("w:lvlText"))
+    start = level.find(qn("w:start"))
+    return (
+        fmt.get(qn("w:val")) if fmt is not None else "decimal",
+        text.get(qn("w:val")) if text is not None else "",
+        int(start.get(qn("w:val"))) if start is not None else 1,
+    )
+
+
 class _Numbering:
     """Minimal model of Word list numbering: per-list counters with level reset."""
 
@@ -56,19 +67,25 @@ class _Numbering:
         for node in root.findall(qn("w:abstractNum")):
             lvls = {}
             for lvl in node.findall(qn("w:lvl")):
-                fmt = lvl.find(qn("w:numFmt"))
-                text = lvl.find(qn("w:lvlText"))
-                start = lvl.find(qn("w:start"))
-                lvls[int(lvl.get(qn("w:ilvl"), "0"))] = (
-                    fmt.get(qn("w:val")) if fmt is not None else "decimal",
-                    text.get(qn("w:val")) if text is not None else "",
-                    int(start.get(qn("w:val"))) if start is not None else 1,
-                )
+                lvls[int(lvl.get(qn("w:ilvl"), "0"))] = _read_level(lvl)
             abstract[node.get(qn("w:abstractNumId"))] = lvls
         for num in root.findall(qn("w:num")):
             ref = num.find(qn("w:abstractNumId"))
-            if ref is not None:
-                self.levels[num.get(qn("w:numId"))] = abstract.get(ref.get(qn("w:val")), {})
+            if ref is None:
+                continue
+            # Each numId is an independent list, even when it shares an abstractNum.
+            levels = abstract.get(ref.get(qn("w:val")), {}).copy()
+            for override in num.findall(qn("w:lvlOverride")):
+                ilvl = int(override.get(qn("w:ilvl"), "0"))
+                level = override.find(qn("w:lvl"))
+                if level is not None:
+                    levels[ilvl] = _read_level(level)
+                start = override.find(qn("w:startOverride"))
+                if start is not None and ilvl in levels:
+                    # OOXML: startOverride wins over the nested lvl/start as well.
+                    fmt, text, _ = levels[ilvl]
+                    levels[ilvl] = (fmt, text, int(start.get(qn("w:val"))))
+            self.levels[num.get(qn("w:numId"))] = levels
 
     def next_label(self, paragraph: Paragraph, style) -> tuple[str | None, bool]:
         """Returns (label as Word renders it, e.g. "3.2." or "а)", is_list). None for bullets."""
