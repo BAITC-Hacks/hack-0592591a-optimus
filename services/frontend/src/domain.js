@@ -15,6 +15,12 @@ export const FINDING_TYPE = {
   NOTE: { label: "Примечание", cls: "badge-info", card: "f-info", tile: "tile-soft", icon: "info", quote: "" },
 };
 
+// O1 findings, «Нормативные требования» tab (docs/TASK.md §12a).
+export const REGULATORY_TYPE = {
+  POTENTIAL_REGULATORY_CONFLICT: { label: "Возможное расхождение с нормой", cls: "badge-conflict", card: "f-conflict", icon: "scale" },
+  REGULATORY_BASIS: { label: "Нормативное основание", cls: "badge-ok", card: "f-info", icon: "scale" },
+};
+
 // Main list vs the collapsed group of low-importance cards (docs/TASK.md §8).
 export const PRIMARY_FINDINGS = ["POTENTIAL_LOSS", "POTENTIAL_CONFLICT", "POTENTIAL_DUPLICATION"];
 export const SECONDARY_FINDINGS = ["MOVED", "OVERLAP", "NOTE"];

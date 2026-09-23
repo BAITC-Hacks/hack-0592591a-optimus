@@ -9,6 +9,7 @@ import Conclusion from "./components/Conclusion.vue";
 import FindingCard from "./components/FindingCard.vue";
 import MatchTable from "./components/MatchTable.vue";
 import ProgressBar from "./components/ProgressBar.vue";
+import RegulatoryTab from "./components/RegulatoryTab.vue";
 import UnitsTable from "./components/UnitsTable.vue";
 import UploadPanel from "./components/UploadPanel.vue";
 import { pollAnalysis, startAnalysis, startDemo } from "./api.js";
@@ -52,6 +53,7 @@ const TABS = [
   ["units", "Подразделения"],
   ["matches", "Сопоставление функций"],
   ["findings", "Отклонения"],
+  ["regulatory", "Нормативные требования"],
   ["conclusion", "Заключение"],
 ];
 
@@ -258,6 +260,7 @@ onUnmounted(stopClock);
                 </div>
               </details>
             </div>
+            <RegulatoryTab v-else-if="tab === 'regulatory'" :findings="analysis.regulatory ?? []" :stats="stats" :documents="analysis.documents ?? []" @open-clause="clauseTarget = $event" />
             <Conclusion v-else :markdown="analysis.conclusion_md" :analysis-id="analysis._id || analysis.analysis_id || 'analysis'" />
           </div>
         </div>

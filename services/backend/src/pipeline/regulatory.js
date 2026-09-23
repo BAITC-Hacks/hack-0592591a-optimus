@@ -34,6 +34,15 @@ const normText = (norm) => `${norm.article_title ?? ""} ${norm.text}`;
 const hash = (text) => createHash("sha1").update(text).digest("hex").slice(0, 16);
 export const ruDate = (iso) => (iso ? iso.split("-").reverse().join(".") : null);
 
+/** The judge sees norms under short ids (n1, n2 …); they mean nothing to a reader. */
+export function cleanReason(text) {
+  const out = String(text ?? "")
+    .replace(/\s*\(?\b[nN]\d{1,3}\b\)?/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return out ? out[0].toUpperCase() + out.slice(1) : out;
+}
+
 /** Clauses of uploaded regulation documents, in the norm shape. */
 export function uploadedNorms(docs) {
   return docs
@@ -198,7 +207,7 @@ export async function checkRegulatory({ after, docs, llm, norms: corpus, saveEmb
       label: LABELS[type],
       units: fn.owners,
       title: type === "REGULATORY_BASIS" ? `${fn.canonical}: основание — ${act}` : `${fn.canonical}: возможно расходится с ${act}`,
-      explanation: verdict.reason || "Связь с нормой требует проверки.",
+      explanation: cleanReason(verdict.reason) || "Связь с нормой требует проверки.",
       confidence: verdict.confidence,
       citations: [{ doc_id: fn.doc_id, side: "after", clause_id: fn.clause_id, ref: fn.ref, quote: fn.quote || quoteOf(fn.text) }],
       norm: {

@@ -128,9 +128,12 @@ print("loss", "ok" if loss and loss[0]["citations"][0]["quote"].startswith("фо
 print("dup", "ok" if dup else "FAIL")
 print("conflict", "ok" if conf else "FAIL")
 print("quotes", "ok" if quoted and d["stats"].get("dropped_unverified")==0 else "FAIL")
-print("conclusion", "ok" if "рекомендательный характер" in d.get("conclusion_md","") else "FAIL")'
+print("conclusion", "ok" if "рекомендательный характер" in d.get("conclusion_md","") else "FAIL")
+s=d.get("stats",{}); r=d.get("regulatory",[])
+sourced=all(x["citations"][0].get("quote") and x["norm"].get("quote") and (x["norm"]["origin"]!="corpus" or x["norm"]["source_url"].startswith("https://adilet.zan.kz/")) for x in r)
+print("regulatory", "ok" if s.get("regulatory_status")=="ok" and s.get("regulatory_norms")==477 and sourced else "FAIL "+str(s.get("regulatory_status"))+" "+str(s.get("regulatory_norms")))'
   verdict="$(printf '%s' "$out" | docker run --rm -i python:3.12-slim python -c "$py" 2>&1)"
-  for key in created reorganized loss dup conflict quotes conclusion; do
+  for key in created reorganized loss dup conflict quotes conclusion regulatory; do
     line="$(grep -E "^$key " <<<"$verdict")"
     case "$key" in
       created)      name="control set: units ДИТААД and ДОА created" ;;
@@ -140,6 +143,7 @@ print("conclusion", "ok" if "рекомендательный характер" 
       conflict)     name="control set: POTENTIAL_CONFLICT cites после п. 5.5.2" ;;
       quotes)       name="every finding has a verified quote" ;;
       conclusion)   name="conclusion carries the advisory disclaimer" ;;
+      regulatory)   name="O1: legislation check ran on 477 norms; every finding has both quotes and an adilet link" ;;
     esac
     grep -q " ok$" <<<"$line"; report "$name" $? "$line"
   done

@@ -41,7 +41,7 @@ function stubLlm(answers) {
       const results = input.functions.map((f) => {
         const answer = answers[f.id] ?? { relation: "none" };
         const norm = answer.clause ? input.norms.find((n) => f.candidates.includes(n.id) && n.clause.startsWith(answer.clause)) : null;
-        return { id: f.id, norm_id: answer.norm_id ?? norm?.id ?? null, relation: answer.relation, confidence: answer.confidence ?? 0.9, reason: "Возможно, связано; требует проверки." };
+        return { id: f.id, norm_id: answer.norm_id ?? norm?.id ?? null, relation: answer.relation, confidence: answer.confidence ?? 0.9, reason: `${norm?.id ?? "n1"} возможно связана с функцией; требует проверки.` };
       });
       return schema.parse({ results });
     },
@@ -81,6 +81,8 @@ test("basis and possible conflict, each with a verified org quote and a verbatim
     assert.equal(f.norm.redaction_date, "2026-08-13");
     assert.ok(ART61.text.includes(f.norm.quote), "norm quote is verbatim");
     assert.ok(f.citations[0].quote.length > 0);
+    assert.doesNotMatch(f.explanation, /\bn\d+\b/, "short norm ids never reach the reader");
+    assert.match(f.explanation, /^Возможно связана/);
   }
   assert.match(findings[1].norm.quote, /подчиняется совету директоров/, "the closest line of the article is quoted");
 });
