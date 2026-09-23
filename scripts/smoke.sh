@@ -90,9 +90,30 @@ fi
 check "demo account login"     '"email":"demo@example.com"' \
   -X POST "$BASE_URL/api/auth/login" "${JSON[@]}" -d '{"email":"demo@example.com","password":"demo12345"}'
 
-# --- main scenario (fill in once the API exists) -----------------------------
-# check "main scenario"      '"result"'  -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{...}'
-# check "rejects bad input"  '422'       -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{"amount":"abc"}'
+# --- main scenario: demo analysis (docs/TASK.md §2, §7) ------------------------
+# Runs the bundled ред. 8 / ред. 9 pair, polls until done, checks a clause and its source.
+# Only the stages listed in "pipeline.implemented" run so far; see README «Ограничения».
+report() { # name, ok(0/1), output
+  if [ "$2" -eq 0 ]; then echo "  ok    $1"; pass=$((pass + 1)); else echo "  FAIL  $1"; echo "        got: ${3:0:300}"; fail=$((fail + 1)); fi
+}
+out="$("${CURL[@]}" -w ' %{http_code}' -X POST "$BASE_URL/api/analyses/demo" 2>&1)"
+ANALYSIS_ID="$(grep -oE 'a_[0-9a-f]{12}' <<<"$out" | head -1)"
+[ -n "$ANALYSIS_ID" ] && grep -q ' 202$' <<<"$out"; report "demo analysis queued (202)" $? "$out"
+status=""
+for _ in $(seq 1 60); do
+  out="$("${CURL[@]}" "$BASE_URL/api/analyses/$ANALYSIS_ID" 2>&1)"
+  status="$(grep -oE '"status":"[a-z]+"' <<<"${out:0:400}" | head -1)"
+  case "$status" in *done*|*failed*) break ;; esac
+  sleep 1
+done
+[ "$status" = '"status":"done"' ]; report "demo analysis done" $? "${out:0:300}"
+grep -q '"clause_id":"5.6.2","parent_id":"5.6"' <<<"$out" && grep -q '"ref":"п. 5.6.2, стр. 10, строки 11–12"' <<<"$out"
+report "demo clause 5.6.2 with its source" $? "$(grep -o '"pipeline":{[^}]*}' <<<"$out")"
+out="$(echo "plain text" | "${CURL_STDIN[@]}" -o /dev/null -w '%{http_code}' -F "before=@-;filename=notes.txt" -F "after=@-;filename=notes.txt" "$BASE_URL/api/analyses" 2>&1)"
+[ "$out" = "415" ]; report "analysis rejects unsupported type (415)" $? "$out"
+out="$(tiny_pdf | "${CURL_STDIN[@]}" -w ' %{http_code}' -F "before=@-;filename=order.pdf" "$BASE_URL/api/analyses" 2>&1)"
+grep -q '"missing_side".* 422$' <<<"$out"; report "analysis rejects a missing side (422)" $? "$out"
+check "unknown analysis id (404)" '"not_found"' "$BASE_URL/api/analyses/a_000000000000"
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]
