@@ -5,7 +5,7 @@
 		reverse_proxy backend:8000
 	}
 
-	# PLACEHOLDER until the frontend service exists (next chunk).
-	respond /health "ok" 200
-	respond "HackAlem AI: pipeline works. The application replaces this page." 200
+	handle {
+		reverse_proxy frontend:80
+	}
 }

@@ -13,6 +13,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      frontend:
+        condition: service_healthy
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
@@ -59,6 +61,20 @@ services:
       watch:
         - action: rebuild
           path: ./services/backend
+
+  # Vue 3 + Vite, built to static files and served by a small Caddy container.
+  frontend:
+    build: ./services/frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    develop:
+      watch:
+        - action: rebuild
+          path: ./services/frontend
 
 volumes:
   mongo-data:

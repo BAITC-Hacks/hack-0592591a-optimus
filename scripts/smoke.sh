@@ -23,8 +23,9 @@ check() { # name, expected-substring, curl args...
 }
 
 echo "Smoke test against $BASE_URL"
-check "health endpoint"   "ok"   "$BASE_URL/health"
-check "entrypoint is up"  "200"  -o /dev/null -w '%{http_code}' "$BASE_URL/"
+check "backend health"    '"ok"'                    "$BASE_URL/api/health"
+check "frontend is up"    "Анализ оргструктуры"     "$BASE_URL/"
+check "unknown api route" '"not_found"'             "$BASE_URL/api/does-not-exist"
 
 # --- main scenario (fill in once the API exists) -----------------------------
 # check "main scenario"      '"result"'  -X POST "$BASE_URL/api/..." -H 'content-type: application/json' -d '{...}'
