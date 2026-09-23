@@ -6,6 +6,9 @@
 #   ./scripts/smoke.sh                                  # local stack
 #   BASE_URL=https://<vm-host> ./scripts/smoke.sh       # live preview
 set -Eeuo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REQUIRE_ANALYSIS=0
+case "${1:-}" in "") ;; --require-analysis) REQUIRE_ANALYSIS=1 ;; *) echo "Usage: smoke.sh [--require-analysis]"; exit 2 ;; esac
 
 PORT="${WEB_PORT:-3000}"
 BASE_URL="${BASE_URL:-http://host.docker.internal:$PORT}"
@@ -116,41 +119,27 @@ if grep -q '"llm":"configured"' <<<"$health"; then
     case "$status" in *done*|*failed*) break ;; esac
     sleep 2
   done
-  [ "$status" = '"status":"done"' ]; report "demo analysis done" $? "$(grep -o '"error":{[^}]*}' <<<"$out")"
+  if [ "$status" = '"status":"done"' ]; then report "demo analysis done" 0 ""; else report "demo analysis done" 1 "${out:0:300}"; echo "passed=$pass failed=$fail"; exit 1; fi
   grep -q '"clause_id":"5.6.2","parent_id":"5.6"' <<<"$out" && grep -q '"ref":"п. 5.6.2, стр. 10, строки 11–12"' <<<"$out"
   report "demo clause 5.6.2 with its source" $? "${out:0:300}"
-  py='import json,sys
-d=json.load(sys.stdin); f=d.get("findings",[]); u={x["unit_id"]:x for x in d.get("units",[])}
-created={ (u[c["after"]].get("abbr") or u[c["after"]]["name"]) for c in d.get("unit_changes",[]) if c["status"]=="created"}
-reorg=[c for c in d.get("unit_changes",[]) if c["status"]=="reorganized"]
-loss=[x for x in f if x["type"]=="POTENTIAL_LOSS" and any(c["clause_id"]=="5.6.2" and c["side"]=="before" for c in x["citations"])]
-dup=[x for x in f if x["type"]=="POTENTIAL_DUPLICATION" and {c["clause_id"] for c in x["citations"]}=={"5.4.3","5.5.8"}]
-conf=[x for x in f if x["type"]=="POTENTIAL_CONFLICT" and any(c["clause_id"]=="5.5.2" for c in x["citations"])]
-quoted=all(c.get("quote") for x in f for c in x["citations"])
-print("created", "ok" if {"ДИТААД","ДОА"}<=created else "FAIL "+str(sorted(created)))
-print("reorganized", "ok" if reorg else "FAIL none")
-print("loss", "ok" if loss and loss[0]["citations"][0]["quote"].startswith("формировать группы контроля качества") else "FAIL")
-print("dup", "ok" if dup else "FAIL")
-print("conflict", "ok" if conf else "FAIL")
-print("quotes", "ok" if quoted and d["stats"].get("dropped_unverified")==0 else "FAIL")
-print("conclusion", "ok" if "рекомендательный характер" in d.get("conclusion_md","") else "FAIL")
-s=d.get("stats",{}); r=d.get("regulatory",[])
-sourced=all(x["citations"][0].get("quote") and x["norm"].get("quote") and (x["norm"]["origin"]!="corpus" or x["norm"]["source_url"].startswith("https://adilet.zan.kz/")) for x in r)
-print("regulatory", "ok" if s.get("regulatory_status")=="ok" and s.get("regulatory_norms")==477 and sourced else "FAIL "+str(s.get("regulatory_status"))+" "+str(s.get("regulatory_norms")))'
+  py="$(cat "$ROOT/scripts/verify-control.py")"
   verdict="$(printf '%s' "$out" | docker run --rm -i python:3.12-slim python -c "$py" 2>&1)"
-  for key in created reorganized loss dup conflict quotes conclusion regulatory; do
+  for key in created kept reorganized loss dup conflict quotes unit_sources counts conclusion regulatory; do
     line="$(grep -E "^$key " <<<"$verdict")"
     case "$key" in
       created)      name="control set: units ДИТААД and ДОА created" ;;
-      reorganized)  name="control set: a unit reorganized into successors" ;;
+      kept) name="control set: ДНМ and ДККМ kept" ;;
+      unit_sources) name="every unit points to the correct document and side" ;;
+      counts) name="finding counts reconcile with actual records" ;;
+      reorganized) name="control set: audit direction reorganized into ДИТААД and ДОА" ;;
       loss)         name="control set: POTENTIAL_LOSS at до п. 5.6.2 with its quote" ;;
       dup)          name="control set: POTENTIAL_DUPLICATION после п. 5.4.3 / 5.5.8" ;;
       conflict)     name="control set: POTENTIAL_CONFLICT cites после п. 5.5.2" ;;
       quotes)       name="every finding has a verified quote" ;;
-      conclusion)   name="conclusion carries the advisory disclaimer" ;;
+      conclusion)   name="conclusion covers all findings with valid document-qualified references" ;;
       regulatory)   name="O1: legislation check ran on 477 norms; every finding has both quotes and an adilet link" ;;
     esac
-    grep -q " ok$" <<<"$line"; report "$name" $? "$line"
+    if grep -q " ok$" <<<"$line"; then report "$name" 0 ""; else report "$name" 1 "$line"; fi
   done
 
   # --- input guard and per-user history ---------------------------------------
@@ -183,6 +172,7 @@ print("regulatory", "ok" if s.get("regulatory_status")=="ok" and s.get("regulato
     report "history does not list another user's run" 0 ""
   fi
 else
+  if [ "$REQUIRE_ANALYSIS" -eq 1 ]; then report "main AI scenario is required" 1 "LLM is not configured; infrastructure checks cannot satisfy this gate"; fi
   echo "  skip  demo analysis and control set: LLM not configured (set OPENAI_API_KEY and LLM_MODEL in .env)"
   check "demo analysis without a model answers 503 llm_unavailable" '"llm_unavailable"' -X POST "$BASE_URL/api/analyses/demo"
 fi

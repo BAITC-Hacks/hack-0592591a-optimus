@@ -6,7 +6,7 @@
 //   - glued ids inside a fragment ("…Общества. 3.10.Работники могут") are split,
 //     but only when the id continues the numbering, so "см. п. 3. Настоящего" is not;
 //   - page-number fragments ("6") are dropped;
-//   - everything from «Оглавление» / «Содержание» after the body is dropped;
+//   - TOC headings and entries are skipped; subsequent appendices are retained;
 //   - sub-items (clause null, marker "а") become child clauses "<parent>.<marker>".
 import { z } from "zod";
 
@@ -129,16 +129,24 @@ export function buildClauses(extraction, { docId, side }) {
     append(text.slice(cursor).trim(), fragment);
   };
 
-  for (const [index, fragment] of extraction.fragments.entries()) {
+  let inToc = false;
+  for (const fragment of extraction.fragments) {
     const text = fragment.text.trim();
     if (PAGE_NUMBER.test(text)) {
       stats.page_numbers_dropped++;
       continue;
     }
-    if (TOC.test(text) && lastNumeric) {
-      stats.tail_dropped = extraction.fragments.length - index;
-      break;
+    if (TOC.test(text)) {
+      inToc = true;
+      open = null;
+      stats.tail_dropped++;
+      continue;
     }
+    if (inToc && /^(?:\d+(?:\.\d+)*[.)]?\s+.+\s+\d+|.+\.{2,}\s*\d+)\s*$/.test(text)) {
+      stats.tail_dropped++;
+      continue;
+    }
+    inToc = false;
     if (fragment.kind === "sheet_row" && !fragment.clause) {
       // Excel: each row is its own record, cited by sheet and row.
       const { sheet, row } = fragment.location;

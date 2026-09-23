@@ -113,3 +113,16 @@ test("Excel rows are separate records cited by sheet and row", () => {
     ],
   );
 });
+
+test('a table of contents does not discard following appendix duties', () => {
+  const fragments = [
+    {id:'f1',text:'1. Общие положения',clause:'1',ref:'абзац 1'},
+    {id:'f2',text:'Оглавление',ref:'абзац 2'},
+    {id:'f3',text:'1. ОБЩИЕ ПОЛОЖЕНИЯ 1',clause:'1',ref:'абзац 3'},
+    {id:'f4',text:'Приложение: обязанности отдела',kind:'heading',ref:'абзац 4'},
+    {id:'f5',text:'Отдел ежегодно проверяет филиалы.',kind:'paragraph',ref:'абзац 5'},
+  ];
+  const result=buildClauses({fragments},{docId:'before_1',side:'before'});
+  assert.equal(result.stats.tail_dropped,2);
+  assert.ok(result.clauses.some(c=>c.text.includes('ежегодно проверяет')));
+});
